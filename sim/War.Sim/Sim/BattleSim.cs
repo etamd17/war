@@ -29,10 +29,36 @@ public sealed class BattleSim
 
     public bool IsOver => State.Result != BattleResult.InProgress;
 
+    /// <summary>True while the armies are drawn up and the clock has not started.</summary>
+    public bool IsDeploying => State.Phase == BattlePhase.Deploying;
+
+    /// <summary>
+    /// Starts the fighting. Until this is called the battle is frozen: no ticks, no
+    /// orders carried out, no arrows in the air, and the player free to rearrange his
+    /// line as long as he likes.
+    /// </summary>
+    public void BeginBattle()
+    {
+        if (State.Phase != BattlePhase.Deploying) return;
+
+        State.Phase = BattlePhase.Fighting;
+
+        // Whatever the player left them facing is the facing they start on, and their
+        // slots are rebuilt around it.
+        foreach (Unit unit in State.Units)
+        {
+            unit.Order = UnitOrder.Hold();
+            unit.SlotsBuiltFor = -1;
+        }
+
+        State.RefreshUnitAggregates();
+        State.RebuildSpatialIndices();
+    }
+
     /// <summary>Advances the battle by exactly one tick.</summary>
     public void Tick()
     {
-        if (IsOver) return;
+        if (IsOver || State.Phase != BattlePhase.Fighting) return;
 
         BattleState state = State;
 
@@ -183,6 +209,7 @@ public sealed class BattleSim
     {
         state.Result = result;
         state.Victor = victor;
+        state.Phase = BattlePhase.Decided;
 
         state.Raise(new BattleEvent
         {

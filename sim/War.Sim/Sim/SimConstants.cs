@@ -55,7 +55,7 @@ public static class SimConstants
     /// this rate a hundred and twenty men evaporated in ten seconds and the battle was
     /// over before the player could react to it.
     /// </summary>
-    public static readonly Fix BaseHitChance = Fix.Ratio(40, 1000);
+    public static readonly Fix BaseHitChance = Fix.Ratio(135, 10000);
 
     /// <summary>
     /// Recentres offense against defence. Defence sums three stats — skill, shield and
@@ -66,14 +66,25 @@ public static class SimConstants
     /// </summary>
     public static readonly Fix DefenceOffset = Fix.FromInt(7);
 
-    /// <summary>How much each point of offense-over-defence shifts the hit chance.</summary>
-    public static readonly Fix HitChancePerPoint = Fix.Ratio(12, 1000);
+    /// <summary>
+    /// How much each point of offense-over-defence shifts the hit chance.
+    ///
+    /// Scaled in lockstep with <see cref="BaseHitChance"/>, which is the point: every
+    /// ratio in the combat model — flanking against frontal, spear against horse, fresh
+    /// against spent — is a ratio of these two numbers, so scaling both leaves the shape
+    /// of every fight untouched and changes only how long it takes.
+    /// </summary>
+    public static readonly Fix HitChancePerPoint = Fix.Ratio(40, 10000);
 
     /// <summary>Even a hopeless attacker connects sometimes.</summary>
-    public static readonly Fix MinHitChance = Fix.Ratio(8, 1000);
+    public static readonly Fix MinHitChance = Fix.Ratio(30, 10000);
 
-    /// <summary>And even a hopeless defender is never a free kill.</summary>
-    public static readonly Fix MaxHitChance = Fix.Ratio(35, 100);
+    /// <summary>
+    /// And even a hopeless defender is never a free kill. Deliberately scaled down less
+    /// than the rest, so an elephant hitting a charge home is still doing something
+    /// visibly different from two swordsmen trading blows.
+    /// </summary>
+    public static readonly Fix MaxHitChance = Fix.Ratio(18, 100);
 
     /// <summary>
     /// Global multiplier on how often men swing. The roster carries the relative timings
@@ -85,6 +96,26 @@ public static class SimConstants
     /// half a minute.
     /// </summary>
     public static readonly Fix MeleeTempo = Fix.Ratio(26, 10);
+
+    /// <summary>
+    /// The battle-pace knob. Multiplies every hit chance, melee and missile alike, after
+    /// all modifiers have been applied.
+    ///
+    /// This is the one to reach for when battles are the wrong length, in preference to
+    /// <see cref="MeleeTempo"/>. Tempo changes how often men swing, which also changes
+    /// how many blows land inside the five-second charge window and so quietly reweights
+    /// charges against grinding. Lethality changes only how often a swing kills, leaving
+    /// every ratio in the model — flank against front, spear against horse, fresh
+    /// against spent, charge against standing — exactly where it was.
+    ///
+    /// It has to scale missiles too. Archery is capped by ammunition rather than by
+    /// time, so slowing melee alone lets a fixed budget of arrows spent in the opening
+    /// minutes carry units to their breaking point before the infantry fight has
+    /// happened, and the battle ends on schedule no matter how gentle the melee is.
+    ///
+    /// Lower is longer. 1.0 gave roughly three-and-a-half-minute battles.
+    /// </summary>
+    public static readonly Fix Lethality = Fix.Ratio(32, 100);
 
     /// <summary>Attack bonus for striking a soldier from outside his frontal arc.</summary>
     public const int FlankAttackBonus = 4;
@@ -124,10 +155,16 @@ public static class SimConstants
     // own. These numbers put a good archer unit at roughly thirty casualties over
     // thirty seconds of sustained fire against a shielded line, and far more against
     // an unarmoured one — which is the difference that should drive your decisions.
-    public static readonly Fix MissileBaseHitChance = Fix.Ratio(10, 100);
-    public static readonly Fix MissileHitChancePerPoint = Fix.Ratio(2, 100);
-    public static readonly Fix MissileMinHitChance = Fix.Ratio(2, 100);
-    public static readonly Fix MissileMaxHitChance = Fix.Ratio(55, 100);
+    // Halved alongside the melee rebalance, and for a reason that is easy to miss:
+    // missile output is capped by ammunition, not by time. Slowing melee without
+    // slowing archery does not merely shift the ratio — it lets a fixed budget of
+    // arrows, all spent in the first two minutes, carry units to their breaking point
+    // before the infantry grind has had a chance to happen at all. The battle then
+    // finishes on schedule regardless of how gentle the swordfighting has become.
+    public static readonly Fix MissileBaseHitChance = Fix.Ratio(5, 100);
+    public static readonly Fix MissileHitChancePerPoint = Fix.Ratio(1, 100);
+    public static readonly Fix MissileMinHitChance = Fix.Ratio(1, 100);
+    public static readonly Fix MissileMaxHitChance = Fix.Ratio(30, 100);
 
     /// <summary>
     /// How close a shot must land to a man to have a chance of hitting him. This is what

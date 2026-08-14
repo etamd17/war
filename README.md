@@ -113,8 +113,13 @@ dotnet build game/War.Game.csproj
 
 ## Controls
 
+A battle opens in **deployment**: the clock is stopped, the armies are drawn up, and a
+line of stakes marks how far forward you may come. Draw your line, then press Enter.
+
 | | |
 |---|---|
+| **Enter** | Begin the battle (deployment only) |
+| **Right click and drag, while deploying** | Place a unit outright. Several selected units share the line you draw, so a whole wing goes down in one gesture |
 | Left click / drag | Select a unit, or drag a box over several |
 | Right click | Move there |
 | **Right click and drag** | Draw the front rank: the line you draw sets frontage and facing |
@@ -188,3 +193,13 @@ in 64 bits.
   trample several men per swing and rout catastrophically.
 - **Fatigue makes reserves worth holding.** A fresh unit beats an exhausted identical one
   roughly two to one.
+- **Fresh troops are steadier than bled ones.** Contagion, fear and being outnumbered are
+  all softened for a unit that is still intact, so panic has to start with troops who
+  have actually been fought. Without that rule an army routed *while at full strength*:
+  one cavalry unit panicking near the elephants spread −10, −20, −30 down the line and
+  dissolved five hundred men in twenty-five seconds, having lost almost none of them.
+
+Battles run about six and a half minutes on average, with a spread from four to
+seventeen. `SimConstants.Lethality` is the single knob for that — it scales every hit
+chance, melee and missile alike, so battle length moves without any ratio in the model
+changing. Lower is longer.

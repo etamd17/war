@@ -18,8 +18,22 @@ namespace War.Sim.Sim.Systems;
 /// </summary>
 public static class MoraleSystem
 {
-    private static readonly Fix FallRatePerSecond = Fix.FromInt(45);
-    private static readonly Fix RiseRatePerSecond = Fix.FromInt(12);
+    /// <summary>
+    /// Morale still falls faster than it recovers — panic is quicker than nerve — but
+    /// not nearly as fast as it first did.
+    ///
+    /// At 45 a unit fell from ninety to the break line in a second and a third, so a
+    /// momentary shock (one tick of being locally outnumbered while a neighbour's
+    /// stragglers wandered off) could doom a unit whose actual situation was fine: the
+    /// target recovered, and morale, climbing at 12, could not get back above the line
+    /// before the break confirmed. Breaks read as arbitrary because they were.
+    ///
+    /// At these rates morale tracks the situation closely enough that a unit breaks
+    /// because of what is happening to it, not because of what happened to it for a
+    /// second and a half.
+    /// </summary>
+    private static readonly Fix FallRatePerSecond = Fix.FromInt(18);
+    private static readonly Fix RiseRatePerSecond = Fix.FromInt(15);
 
     /// <summary>Within this distance a unit counts as being in contact for morale purposes.</summary>
     private static readonly Fix ContactRadius = Fix.FromInt(12);
@@ -55,6 +69,43 @@ public static class MoraleSystem
         }
     }
 
+    /// <summary>
+    /// Why this unit's morale is where it is, term by term.
+    ///
+    /// Balance work on a system with nine interacting contributions is guesswork without
+    /// this. Twice now a plausible theory about what was breaking units turned out to be
+    /// wrong, and each wrong theory cost a full tuning round — so the model explains
+    /// itself instead.
+    /// </summary>
+    public static string Explain(BattleState state, Unit unit)
+    {
+        Army army = state.ArmyOf(unit);
+        Fix baseline = Fix.FromInt(35) + Fix.FromInt(unit.Type.Morale) * Fix.Ratio(36, 10);
+
+        (string name, Fix value)[] terms =
+        [
+            ("base", baseline),
+            ("discipline", Fix.FromInt(unit.Type.Discipline)),
+            ("casualties", CasualtyPenalty(unit)),
+            ("momentum", MomentumTerm(unit)),
+            ("flanked", FlankingPenalty(state, unit)),
+            ("general", GeneralTerm(state, unit, army)),
+            ("nearbyRouts", NearbyRoutsTerm(state, unit) * Resilience(unit)),
+            ("localOdds", LocalOddsTerm(state, unit) * Resilience(unit)),
+            ("fear", FearTerm(state, unit) * Resilience(unit)),
+            ("ground", GroundTerm(state, unit)),
+            ("fatigue", -unit.Fatigue * Fix.FromInt(14)),
+            ("cohesion", (unit.Cohesion - Fix.One) * Fix.FromInt(10)),
+        ];
+
+        var parts = new List<string>();
+        foreach ((string name, Fix value) in terms)
+            if (!value.IsZero) parts.Add($"{name} {value.ToDouble():+0.0;-0.0}");
+
+        return $"{unit.Type.Name} [{unit.Alive}/{unit.Strength}] " +
+               $"morale {unit.Morale.ToDouble():F1} = {string.Join("  ", parts)}";
+    }
+
     // ------------------------------------------------------------------ target
 
     private static Fix ComputeTarget(BattleState state, Unit unit)
@@ -67,18 +118,27 @@ public static class MoraleSystem
 
         morale += CasualtyPenalty(unit);
         morale += MomentumTerm(unit);
-        morale += FlankingPenalty(state, unit);
         morale += GeneralTerm(state, unit, army);
-        morale += NearbyRoutsTerm(state, unit);
-        morale += LocalOddsTerm(state, unit);
-        morale += FearTerm(state, unit);
         morale += GroundTerm(state, unit);
 
-        // Exhausted men lose heart.
-        morale -= unit.Fatigue * Fix.FromInt(25);
+        // Flanking is not softened. It is the player's tactical achievement and it
+        // should always bite, whatever state the target is in.
+        morale += FlankingPenalty(state, unit);
+
+        // Everything ambient — panic spreading from a neighbour, being locally
+        // outnumbered, elephants in the middle distance — is softened for troops who are
+        // still intact. Only the negative side: a unit watching the enemy break takes
+        // the full lift from it however fresh it is.
+        Fix ambient = Ambient(state, unit);
+        morale += ambient.IsNegative ? ambient * Resilience(unit) : ambient;
+
+        // Exhausted men lose heart — but being tired is a reason to fight badly, not on
+        // its own a reason to run. Light cavalry that has been galloping all battle ends
+        // up near-spent, and it should still be a unit.
+        morale -= unit.Fatigue * Fix.FromInt(14);
 
         // A formation that has come apart is a formation about to break.
-        morale += (unit.Cohesion - Fix.One) * Fix.FromInt(15);
+        morale += (unit.Cohesion - Fix.One) * Fix.FromInt(10);
 
         // Discipline is a floor as well as a bonus: drilled troops hold when levies would not.
         morale += Fix.FromInt(unit.Type.Discipline);
@@ -86,14 +146,45 @@ public static class MoraleSystem
         return FixMath.Clamp(morale, Fix.Zero, Fix.FromInt(100));
     }
 
+    /// <summary>Panic from elsewhere on the field, rather than from this unit's own fight.</summary>
+    private static Fix Ambient(BattleState state, Unit unit) =>
+        NearbyRoutsTerm(state, unit) + LocalOddsTerm(state, unit) + FearTerm(state, unit);
+
+    /// <summary>
+    /// How much a unit shrugs off what is happening around it, as opposed to what is
+    /// happening to it. Full strength resists most of it; bled white, none of it.
+    ///
+    /// This exists because without it the model produced armies that routed while
+    /// completely intact. One cavalry unit panicking near the elephants was enough:
+    /// −25 fear, then −10 contagion into the neighbour, −20 into the next, −30 into the
+    /// one after, and the entire Roman line — Velites at 80/80, Hastati at 120/120,
+    /// Principes at 120/120, not one of them having lost a man — dissolved in
+    /// twenty-five seconds. Five hundred men left the field and thirteen of the enemy
+    /// died.
+    ///
+    /// Contagion is real and belongs in the model; armies do come apart all at once. But
+    /// it has to start somewhere, and what it starts from is troops who have already
+    /// been fought. Applied only to the negative side, so a unit watching the enemy
+    /// break still takes the full lift from it.
+    /// </summary>
+    private static Fix Resilience(Unit unit) =>
+        Fix.Ratio(4, 10) + Fix.Ratio(6, 10) * (Fix.One - unit.StrengthFraction);
+
     /// <summary>
     /// Losses hurt more than linearly. A unit at 20% casualties is annoyed; a unit at
     /// 60% has watched most of the men it trained with die and is nearly finished.
     /// </summary>
     private static Fix CasualtyPenalty(Unit unit)
     {
+        // Weighted so that casualties are what actually breaks a unit. With the previous
+        // numbers a body of men at half strength had not even begun to waver, which left
+        // exhaustion and local odds to do all the work — and units were routing before
+        // the lines had met, having barely been fought at all.
+        //
+        // Now good infantry wavers around 45% losses and breaks around 60% on casualties
+        // alone. Get behind it and it goes at half that, which is the whole point.
         Fix lost = Fix.One - unit.StrengthFraction;
-        return -(lost * lost * Fix.FromInt(40) + lost * Fix.FromInt(30));
+        return -(lost * lost * Fix.FromInt(70) + lost * Fix.FromInt(45));
     }
 
     /// <summary>Whether this unit feels like it is winning or losing right now.</summary>
@@ -205,9 +296,10 @@ public static class MoraleSystem
         if (enemies == 0) return Fix.FromInt(4);
         if (friends >= enemies) return Fix.Zero;
 
-        // At even odds this is zero; at three to one against it is a serious penalty.
+        // At even odds this is zero; at three to one against it is a real penalty but not
+        // by itself a rout. Skirmishers and cavalry operate outnumbered by design.
         Fix ratio = Fix.Ratio(friends, enemies);
-        return -(Fix.One - ratio) * Fix.FromInt(22);
+        return -(Fix.One - ratio) * Fix.FromInt(12);
     }
 
     /// <summary>

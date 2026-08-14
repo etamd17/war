@@ -87,16 +87,48 @@ public static class Program
         BattleSim sim = Build(options.Seed, options.Swap);
         var renderer = new BattleRenderer(sim.State, options.Width, options.Height, options.Colour);
 
+        LogLimit = int.MaxValue;
+
         var clock = Stopwatch.StartNew();
         var log = new Queue<string>();
+
+        // Phase timings. "How long is a battle" is the wrong question on its own — an
+        // eight-minute battle that is seven minutes of walking and one of fighting is
+        // not the same game as one that is two and six, and only the split tells you
+        // which knob to turn.
+        int firstShot = -1, firstContact = -1, lineClash = -1, firstBreak = -1;
+
+        static bool IsLine(Unit u) => u.Type.Class is UnitClass.Infantry or UnitClass.Spear or UnitClass.Pike;
 
         while (!sim.IsOver && sim.State.Tick < SimConstants.TickRate * 60 * 40)
         {
             sim.Tick();
+
+            if (firstShot < 0 && sim.State.MissileCount > 0) firstShot = sim.State.Tick;
+            if (firstContact < 0 && sim.State.Units.Any(u => u.InContact)) firstContact = sim.State.Tick;
+
+            // The one that actually matters. Cavalry reaches the enemy in twenty
+            // seconds whatever else is true; the battle proper starts when the heavy
+            // infantry meets.
+            if (lineClash < 0 && sim.State.Units.Any(u => IsLine(u) && u.InContact))
+                lineClash = sim.State.Tick;
+
+            if (firstBreak < 0 && sim.State.Units.Any(u => u.MoraleState == MoraleState.Routing))
+                firstBreak = sim.State.Tick;
+
             Record(sim.State, log);
             sim.State.DrainEvents();
         }
         clock.Stop();
+
+        string Stamp(int tick) => tick < 0
+            ? "  never"
+            : $"{tick / SimConstants.TickRate / 60:D2}:{tick / SimConstants.TickRate % 60:D2}";
+
+        Console.WriteLine();
+        Console.WriteLine($"  missiles {Stamp(firstShot)}   any contact {Stamp(firstContact)}   " +
+                          $"LINES CLASH {Stamp(lineClash)}   first break {Stamp(firstBreak)}   " +
+                          $"ended {Stamp(sim.State.Tick)}");
 
         Console.WriteLine(renderer.Draw());
         foreach (string line in log) Console.WriteLine(line);
@@ -170,6 +202,9 @@ public static class Program
         Console.Write(sb.ToString());
     }
 
+    /// <summary>Lines of battle log kept. The live view shows a tail; --fast keeps everything.</summary>
+    private static int LogLimit = 6;
+
     private static void Record(BattleState state, Queue<string> log)
     {
         foreach (BattleEvent e in state.Events)
@@ -177,7 +212,7 @@ public static class Program
             string? line = e.Type switch
             {
                 BattleEventType.UnitBroke =>
-                    $"  {Clock(state)}  {state.Units[e.A].Type.Name} breaks and runs",
+                    $"  {Clock(state)}  BROKE: {War.Sim.Sim.Systems.MoraleSystem.Explain(state, state.Units[e.A])}",
                 BattleEventType.UnitRallied =>
                     $"  {Clock(state)}  {state.Units[e.A].Type.Name} rallies",
                 BattleEventType.GeneralKilled =>
@@ -189,7 +224,10 @@ public static class Program
 
             if (line == null) continue;
             log.Enqueue(line);
-            while (log.Count > 6) log.Dequeue();
+
+            // The live view has room for six lines; a resolved battle wants the lot.
+            // Trimming to six here once hid the very event being investigated.
+            while (log.Count > LogLimit) log.Dequeue();
         }
     }
 
@@ -271,7 +309,9 @@ public static class Program
         {
             Terrain = terrain,
             Seed = seed,
-            Separation = Fix.FromInt(320),
+            // Wide enough that there is a real approach to think during, and room to
+            // reposition before the lines meet.
+            Separation = Fix.FromInt(380),
             Armies = swapSides ? [carthage, rome] : [rome, carthage],
         });
     }

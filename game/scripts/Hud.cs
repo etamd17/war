@@ -220,9 +220,12 @@ public sealed partial class Hud : CanvasLayer
 
     public Minimap Map { get; private set; } = null!;
 
+    private Button _begin = null!;
+
     public event Action<Unit, bool>? UnitCardClicked;
     public event Action<int>? SpeedChosen;
     public event Action? PauseToggled;
+    public event Action? BeginRequested;
 
     public void Build(BattleState state, int playerArmy, RtsCamera camera)
     {
@@ -276,6 +279,18 @@ public sealed partial class Hud : CanvasLayer
         _result.AddThemeFontSizeOverride("font_size", 46);
         _result.AddThemeColorOverride("font_color", new Color(1f, 0.95f, 0.78f));
         root.AddChild(_result);
+
+        // ---- deployment: the one control that matters before the fighting starts
+        _begin = new Button
+        {
+            Text = "Begin battle  (Enter)",
+            AnchorLeft = 0.5f, AnchorRight = 0.5f,
+            AnchorTop = 1, AnchorBottom = 1,
+            OffsetLeft = -110, OffsetRight = 110,
+            OffsetTop = -(UnitCard.CardHeight + 74), OffsetBottom = -(UnitCard.CardHeight + 34),
+        };
+        _begin.Pressed += () => BeginRequested?.Invoke();
+        root.AddChild(_begin);
 
         // ---- bottom: unit cards
         var cardPanel = new Panel
@@ -348,13 +363,25 @@ public sealed partial class Hud : CanvasLayer
 
         foreach (UnitCard card in _cards) card.Refresh(selected.Contains(card.Unit.Id));
 
-        _result.Text = _state.Result switch
+        bool deploying = _state.Phase == BattlePhase.Deploying;
+        _begin.Visible = deploying;
+
+        if (deploying)
         {
-            BattleResult.ArmyVictory when _state.Victor == _playerArmy => "THE FIELD IS YOURS",
-            BattleResult.ArmyVictory => $"{_state.Armies[_state.Victor].Name.ToUpperInvariant()} HOLDS THE FIELD",
-            BattleResult.Draw => "NEITHER SIDE COULD BREAK THE OTHER",
-            _ => "",
-        };
+            _result.AddThemeFontSizeOverride("font_size", 22);
+            _result.Text = "Draw up your line — drag with the right mouse button to place a unit";
+        }
+        else
+        {
+            _result.AddThemeFontSizeOverride("font_size", 46);
+            _result.Text = _state.Result switch
+            {
+                BattleResult.ArmyVictory when _state.Victor == _playerArmy => "THE FIELD IS YOURS",
+                BattleResult.ArmyVictory => $"{_state.Armies[_state.Victor].Name.ToUpperInvariant()} HOLDS THE FIELD",
+                BattleResult.Draw => "NEITHER SIDE COULD BREAK THE OTHER",
+                _ => "",
+            };
+        }
 
         Map.QueueRedraw();
     }

@@ -39,6 +39,7 @@ public sealed partial class Main : Node3D
 
     private Vector2? _dragFrom;
     private Vector3? _orderFrom;
+    private MeshInstance3D _deploymentMarker = null!;
 
     private static double StepSeconds => 1.0 / SimConstants.TickRate;
 
@@ -125,7 +126,8 @@ public sealed partial class Main : Node3D
         {
             Terrain = terrain,
             Seed = seed,
-            Separation = Fix.FromInt(320),
+            Separation = Fix.FromInt(380),
+            DeploymentPhase = true,
             Armies =
             [
                 new ArmyBlueprint
@@ -180,6 +182,9 @@ public sealed partial class Main : Node3D
         AddChild(_camera);
         _camera.Setup(_terrain, new Vector3(start.X, 0, start.Y), yaw: Mathf.Pi);
 
+        _deploymentMarker = BuildDeploymentMarker();
+        AddChild(_deploymentMarker);
+
         AddChild(new DirectionalLight3D
         {
             Name = "Sun",
@@ -220,6 +225,41 @@ public sealed partial class Main : Node3D
         });
     }
 
+    /// <summary>
+    /// A line of stakes along the forward edge of the player's deployment zone. Without
+    /// something to see, "you may draw up anywhere behind here" is an instruction with no
+    /// referent, and the first thing a player does is drag a unit somewhere it silently
+    /// refuses to go.
+    /// </summary>
+    private MeshInstance3D BuildDeploymentMarker()
+    {
+        DeploymentZone zone = _sim.State.Armies[PlayerArmy].Zone;
+        var colour = new Color(1f, 0.92f, 0.55f);
+
+        // The forward edge is whichever side of the box faces the enemy.
+        float forwardZ = _sim.State.Armies[PlayerArmy].AdvanceDirection.Y > Fix.Zero
+            ? zone.Max.Y.ToFloat()
+            : zone.Min.Y.ToFloat();
+
+        float from = zone.Min.X.ToFloat();
+        float to = zone.Max.X.ToFloat();
+
+        var builder = new MeshBuilder();
+        for (float x = from + 6; x < to - 6; x += 14)
+        {
+            float ground = _terrain.HeightAt(x, forwardZ);
+            builder.AddBox(new Vector3(x, ground + 1.1f, forwardZ), new Vector3(0.25f, 2.2f, 0.25f), colour);
+            builder.AddBox(new Vector3(x, ground + 2.3f, forwardZ), new Vector3(1.4f, 0.18f, 0.18f), colour);
+        }
+
+        return new MeshInstance3D
+        {
+            Name = "DeploymentLine",
+            Mesh = builder.Build(),
+            MaterialOverride = MeshBuilder.Material(unshaded: true),
+        };
+    }
+
     private void BuildHud()
     {
         _hud = new Hud { Name = "Hud" };
@@ -239,6 +279,7 @@ public sealed partial class Main : Node3D
         };
 
         _hud.PauseToggled += () => _paused = !_paused;
+        _hud.BeginRequested += BeginBattle;
         _hud.Map.Clicked += world => _camera.LookAtGround(new Vector3(world.X, 0, world.Y));
     }
 
@@ -267,6 +308,13 @@ public sealed partial class Main : Node3D
 
     private void StepSimulation(double delta)
     {
+        // Nothing moves until the commander says so.
+        if (_sim.IsDeploying)
+        {
+            _accumulator = 0;
+            return;
+        }
+
         if (_paused || _sim.IsOver)
         {
             // Keep the interpolation parked on the last tick rather than drifting past it.
@@ -349,6 +397,11 @@ public sealed partial class Main : Node3D
 
             case Key.Bracketright:
                 AdjustWidth(+4);
+                break;
+
+            case Key.Enter:
+            case Key.KpEnter:
+                BeginBattle();
                 break;
 
             case Key.Escape:
@@ -447,6 +500,9 @@ public sealed partial class Main : Node3D
             return;
         }
 
+        List<Unit> chosen = Selected().ToList();
+        if (chosen.Count == 0) return;
+
         Vector3 along = end - start;
         along.Y = 0;
         float length = along.Length();
@@ -455,10 +511,15 @@ public sealed partial class Main : Node3D
 
         if (length < 5f)
         {
-            foreach (Unit unit in Selected())
+            foreach (Unit unit in chosen)
             {
                 FixVec2 destination = SimBridge.ToSim(start);
-                unit.Order = UnitOrder.MoveTo(destination, unit.AnchorFacing, run);
+
+                // While deploying, the same gesture places the unit outright rather than
+                // ordering it to walk there. Nothing is moving yet, so there is nothing
+                // to order.
+                if (_sim.IsDeploying) _sim.State.Deploy(unit, destination, unit.AnchorFacing);
+                else unit.Order = UnitOrder.MoveTo(destination, unit.AnchorFacing, run);
             }
             return;
         }
@@ -466,24 +527,45 @@ public sealed partial class Main : Node3D
         Vector3 direction = along / length;
         Vector3 centre = start + along * 0.5f;
 
-        foreach (Unit unit in Selected())
+        // Perpendicular to the drawn line, pointing away from the selection.
+        var normal = new Vector3(direction.Z, 0, -direction.X);
+        Vector2 anchorOfFirst = SimBridge.Plane(chosen[0].Centre);
+        if (normal.Dot(new Vector3(anchorOfFirst.X, 0, anchorOfFirst.Y) - centre) > 0) normal = -normal;
+
+        FixVec2 facing = new FixVec2(Fix.FromDouble(normal.X), Fix.FromDouble(normal.Z)).Normalized;
+
+        List<Unit> units = chosen;
+
+        // One unit fills the line you drew. Several share it, in the order they already
+        // stand, so a whole wing can be laid out in one gesture.
+        float share = length / units.Count;
+
+        for (int i = 0; i < units.Count; i++)
         {
-            // Perpendicular to the drawn line, pointing away from where the unit is now.
-            var normal = new Vector3(direction.Z, 0, -direction.X);
-            Vector2 here = SimBridge.Plane(unit.Centre);
-            Vector3 toUnit = new Vector3(here.X, 0, here.Y) - centre;
-            if (normal.Dot(toUnit) > 0) normal = -normal;
+            Unit unit = units[i];
+            float span = units.Count == 1 ? length : share;
 
             unit.Width = Mathf.Clamp(
-                Mathf.RoundToInt(length / Mathf.Max(unit.Type.FileSpacing.ToFloat(), 0.2f)),
+                Mathf.RoundToInt(span / Mathf.Max(unit.Type.FileSpacing.ToFloat(), 0.2f)),
                 2, Math.Max(2, unit.Alive));
             unit.SlotsBuiltFor = -1;
 
-            unit.Order = UnitOrder.MoveTo(
-                SimBridge.ToSim(centre),
-                new FixVec2(Fix.FromDouble(normal.X), Fix.FromDouble(normal.Z)).Normalized,
-                run);
+            Vector3 at = units.Count == 1
+                ? centre
+                : start + direction * (share * (i + 0.5f));
+
+            if (_sim.IsDeploying) _sim.State.Deploy(unit, SimBridge.ToSim(at), facing);
+            else unit.Order = UnitOrder.MoveTo(SimBridge.ToSim(at), facing, run);
         }
+    }
+
+    private void BeginBattle()
+    {
+        if (!_sim.IsDeploying) return;
+
+        _sim.BeginBattle();
+        _deploymentMarker.Visible = false;
+        GD.Print($"WAR — battle joined");
     }
 
     private Vector3? GroundUnder(Vector2 screenPosition)

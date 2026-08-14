@@ -52,8 +52,15 @@ public static class BattleFixtures
     /// the thirty-percent line and ends the battle on that very tick — which silently
     /// truncated several tests to a single frame of simulation.
     /// </summary>
+    /// <remarks>
+    /// Ninety men, not two hundred. The reserve stands in a corner doing nothing all
+    /// battle, but it is still moved, indexed and morale-checked every tick — so every
+    /// man in it is pure cost, multiplied by every micro-test in the suite. Ninety is
+    /// comfortably enough: the army-break check needs 70% of the whole army gone, and
+    /// the unit under test cannot lose more than its own strength.
+    /// </remarks>
     private static UnitBlueprint DistantReserve(Faction faction) =>
-        new() { TypeId = Roster.GeneralOf(faction).Id, Strength = 200 };
+        new() { TypeId = Roster.GeneralOf(faction).Id, Strength = 90 };
 
     /// <summary>Parks the reserves in opposite corners, out of everyone's way.</summary>
     private static void StowReserves(BattleState state, params Unit[] reserves)

@@ -299,7 +299,9 @@ public static class MeleeSystem
         Fix chance = SimConstants.BaseHitChance
             + (offense - defence + SimConstants.DefenceOffset) * SimConstants.HitChancePerPoint;
 
-        return FixMath.Clamp(chance, SimConstants.MinHitChance, SimConstants.MaxHitChance);
+        chance = FixMath.Clamp(chance, SimConstants.MinHitChance, SimConstants.MaxHitChance);
+
+        return chance * SimConstants.Lethality;
     }
 
     /// <summary>

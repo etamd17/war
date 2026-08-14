@@ -35,6 +35,16 @@ public sealed class BattleSetup
 
     /// <summary>Metres between the two deployment lines at the start.</summary>
     public Fix Separation { get; init; } = Fix.FromInt(320);
+
+    /// <summary>
+    /// Start the battle paused with the armies drawn up, so a commander can rearrange
+    /// his line before anything moves. The game wants this; auto-resolve, balance sweeps
+    /// and tests do not.
+    /// </summary>
+    public bool DeploymentPhase { get; init; }
+
+    /// <summary>How deep the ground behind each starting line is, for deployment.</summary>
+    public Fix DeploymentDepth { get; init; } = Fix.FromInt(90);
 }
 
 /// <summary>
@@ -108,6 +118,8 @@ public static class BattleBuilder
         var state = new BattleState(setup.Terrain, units.ToArray(), armies, nextSoldier, setup.Seed);
 
         Deploy(state, setup);
+
+        if (setup.DeploymentPhase) state.Phase = BattlePhase.Deploying;
         state.RefreshUnitAggregates();
         state.RebuildSpatialIndices();
 
@@ -132,6 +144,20 @@ public static class BattleBuilder
 
             army.AdvanceDirection = facing;
             army.DeploymentCentre = new FixVec2(mapCentre, line);
+
+            // The ground behind the starting line, spanning the width of the field, plus
+            // a little in front of it — enough that the boundary is visibly ahead of the
+            // troops rather than drawn through them, and enough to let a commander push
+            // his line forward a few paces if he wants the ridge.
+            Fix allowance = Fix.FromInt(28);
+            Fix behind = south ? line - setup.DeploymentDepth : line - allowance;
+            Fix ahead = south ? line + allowance : line + setup.DeploymentDepth;
+
+            army.Zone = new DeploymentZone
+            {
+                Min = new FixVec2(Fix.Zero, FixMath.Max(behind, Fix.Zero)),
+                Max = new FixVec2(setup.Terrain.Size, FixMath.Min(ahead, setup.Terrain.Size)),
+            };
 
             DeployArmy(state, army, new FixVec2(mapCentre, line), facing);
 

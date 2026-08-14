@@ -294,6 +294,8 @@ public static class MissileSystem
         Fix forest = state.Terrain.ForestAt(state.Position[victim]);
         chance *= Fix.One - forest * SimConstants.ForestMissileCover;
 
-        return FixMath.Clamp01(chance);
+        // Scaled by the same battle-pace knob as melee — see SimConstants.Lethality for
+        // why archery cannot be left out of it.
+        return FixMath.Clamp01(chance * SimConstants.Lethality);
     }
 }

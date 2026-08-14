@@ -338,6 +338,13 @@ public static class CommanderAI
             // in the AI's favour rather than against it.
             if (enemy.Type.BonusVsMounted >= 5 && !enemy.InContact) score -= Fix.FromInt(70);
 
+            // And do not send horses at elephants. Watching a battle log, the very first
+            // unit to break was invariably the Roman cavalry at around fifty seconds,
+            // having ridden straight at the Carthaginian elephants and taken the full
+            // twenty-five point fear penalty that mounts suffer from them. The commander
+            // was reliably throwing away its own cavalry in the first minute.
+            if (enemy.Type.CausesFear && !horse.Type.ImmuneToFear) score -= Fix.FromInt(90);
+
             score -= FixVec2.Distance(horse.Centre, enemy.Centre) / 6;
 
             if (score <= bestScore) continue;

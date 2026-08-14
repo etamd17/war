@@ -68,6 +68,36 @@ public enum BattleResult : byte
     Draw = 2,
 }
 
+/// <summary>Which part of a battle we are in.</summary>
+public enum BattlePhase : byte
+{
+    /// <summary>Armies drawn up, clock stopped, the player still free to rearrange his line.</summary>
+    Deploying = 0,
+    Fighting = 1,
+    Decided = 2,
+}
+
+/// <summary>
+/// The ground an army is allowed to draw up on: an axis-aligned box on the battlefield.
+///
+/// A box rather than anything cleverer because the only thing that matters is that it
+/// stops short of the enemy. Where you put your line inside it — refused flank, weight
+/// on one wing, cavalry wide or held behind the centre — is the entire decision, and a
+/// rectangle constrains none of it.
+/// </summary>
+public readonly struct DeploymentZone
+{
+    public required FixVec2 Min { get; init; }
+    public required FixVec2 Max { get; init; }
+
+    public bool Contains(FixVec2 point) =>
+        point.X >= Min.X && point.X <= Max.X && point.Y >= Min.Y && point.Y <= Max.Y;
+
+    public FixVec2 Clamp(FixVec2 point) => new(
+        FixMath.Clamp(point.X, Min.X, Max.X),
+        FixMath.Clamp(point.Y, Min.Y, Max.Y));
+}
+
 /// <summary>An army: a side in the battle, its units, and its commander.</summary>
 public sealed class Army
 {
@@ -88,6 +118,9 @@ public sealed class Army
 
     /// <summary>The direction this army faces at the start — its axis of advance.</summary>
     public FixVec2 AdvanceDirection { get; set; } = FixVec2.North;
+
+    /// <summary>Where this army may draw up before the battle begins.</summary>
+    public DeploymentZone Zone { get; set; }
 
     public int InitialMen { get; set; }
 
@@ -196,6 +229,19 @@ public sealed class BattleState
 
     public Missile[] Missiles { get; }
     public int MissileCount { get; internal set; }
+
+    /// <summary>
+    /// Whether the battle is waiting to be started. <see cref="BattleSim.Tick"/> does
+    /// nothing while this is <see cref="BattlePhase.Deploying"/>, so the clock, the
+    /// commander AI and every missile in the world stay stopped while the player draws
+    /// up his line.
+    ///
+    /// Defaults to <see cref="BattlePhase.Fighting"/>: a battle constructed directly is
+    /// one that is already joined, which is what auto-resolve, balance sweeps and the
+    /// test fixtures all want. Ask for a deployment phase via
+    /// <see cref="BattleSetup.DeploymentPhase"/>.
+    /// </summary>
+    public BattlePhase Phase { get; internal set; } = BattlePhase.Fighting;
 
     public BattleResult Result { get; internal set; } = BattleResult.InProgress;
 
@@ -387,6 +433,30 @@ public sealed class BattleState
             unit.Type.FileSpacing, unit.Type.RankSpacing);
 
         return unit.Anchor + local.Rotate(unit.AnchorFacing);
+    }
+
+    /// <summary>
+    /// Repositions a unit during deployment, keeping its whole footprint inside its
+    /// army's zone rather than only its anchor — otherwise a wide line placed on the
+    /// boundary hangs half its men out into no-man's-land.
+    /// </summary>
+    public void Deploy(Unit unit, FixVec2 anchor, FixVec2 facing)
+    {
+        if (Phase != BattlePhase.Deploying) return;
+
+        DeploymentZone zone = Armies[unit.ArmyId].Zone;
+
+        // Shrink the zone by the unit's own reach so the whole formation fits inside it.
+        Fix margin = FixMath.Max(unit.HalfFrontage, unit.HalfDepth * 2);
+        var inset = new DeploymentZone
+        {
+            Min = new FixVec2(zone.Min.X + margin, zone.Min.Y + margin),
+            Max = new FixVec2(
+                FixMath.Max(zone.Max.X - margin, zone.Min.X + margin),
+                FixMath.Max(zone.Max.Y - margin, zone.Min.Y + margin)),
+        };
+
+        Reposition(unit, inset.Clamp(anchor), facing);
     }
 
     /// <summary>
