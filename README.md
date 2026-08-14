@@ -20,7 +20,25 @@ You need two things installed:
 - **Godot 4.5, .NET variant** — from [godotengine.org/download](https://godotengine.org/download).
   The plain build will not run C#.
 
-Then open `game/project.godot` in Godot and press play.
+Then open `game/project.godot` in Godot and press play. Godot will build the C# project
+on first open; give it a moment.
+
+### If the first run goes wrong
+
+The whole game layer compiles and typechecks, but it has never been *rendered* — Godot
+was not installed on the machine it was written on. Expect some first-run friction. The
+likely causes, in order:
+
+| Symptom | Cause and fix |
+|---|---|
+| `The SDK 'Godot.NET.Sdk/4.5.0' specified could not be found` | Your Godot is a different point release. Open `game/War.Game.csproj` and change the version on line 1 to match — e.g. `Godot.NET.Sdk/4.5.1`. |
+| Godot says C# / .NET is not available | You have the standard build. Download the one labelled **.NET** from the same page. |
+| Build fails on `net8.0` | The .NET 8 SDK isn't installed. `dotnet --list-sdks` should show an `8.x`. |
+| Window opens but is empty or black | The camera starts on the Roman deployment line. Try scrolling out with the mouse wheel, or `WASD` to pan. |
+| HUD overlaps or sits off-screen | Hand-written anchors that have never been seen at a real resolution. Cosmetic; tell me your window size. |
+
+If it throws, the text in Godot's **Output** panel is the useful thing — paste it over and
+I'll fix it.
 
 ## Watching a battle without Godot
 
