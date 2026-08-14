@@ -63,15 +63,33 @@ public class FixVec2Tests
     [Fact]
     public void Rotate_PlacesFormationSlotsCorrectly()
     {
-        // A slot two units ahead of a unit facing north must end up two units north.
-        var localOffset = new FixVec2(Fix.Zero, Fix.FromInt(2));
-        FixVec2 world = localOffset.Rotate(FixVec2.North);
+        // The convention every formation depends on: local +X is forward, +Y is left.
+        var forward = new FixVec2(Fix.FromInt(2), Fix.Zero);
+        var left = new FixVec2(Fix.Zero, Fix.FromInt(2));
 
-        Assert.Equal(-2.0, world.X.ToDouble(), 3);
-        Assert.Equal(0.0, world.Y.ToDouble(), 3);
+        // A front-rank slot two metres ahead of a unit facing north ends up two north.
+        FixVec2 aheadOfNorth = forward.Rotate(FixVec2.North);
+        Assert.Equal(0.0, aheadOfNorth.X.ToDouble(), 3);
+        Assert.Equal(2.0, aheadOfNorth.Y.ToDouble(), 3);
 
-        // Facing east (the identity rotation) the offset is unchanged.
-        Assert.Equal(localOffset, localOffset.Rotate(FixVec2.East));
+        // A slot on the left of that same unit ends up two metres west.
+        FixVec2 leftOfNorth = left.Rotate(FixVec2.North);
+        Assert.Equal(-2.0, leftOfNorth.X.ToDouble(), 3);
+        Assert.Equal(0.0, leftOfNorth.Y.ToDouble(), 3);
+
+        // Facing east is the identity rotation, so offsets pass through untouched.
+        Assert.Equal(forward, forward.Rotate(FixVec2.East));
+        Assert.Equal(left, left.Rotate(FixVec2.East));
+    }
+
+    [Fact]
+    public void Rotate_AgreesWithTheRightFlankHelper()
+    {
+        // Rotating "left" by a facing must match that facing's Left, or formations and
+        // flank detection would disagree about which side is which.
+        var left = new FixVec2(Fix.Zero, Fix.One);
+        foreach (FixVec2 facing in new[] { FixVec2.North, FixVec2.East, -FixVec2.North, -FixVec2.East })
+            Assert.Equal(facing.Left, left.Rotate(facing));
     }
 
     [Fact]

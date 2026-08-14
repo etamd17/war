@@ -111,8 +111,13 @@ public readonly struct FixVec2 : IEquatable<FixVec2>
 
     /// <summary>
     /// Rotates this vector by the rotation that <paramref name="facing"/> represents,
-    /// treating facing as (cos, sin). Used to place formation slots: a slot's local
+    /// treating facing as (cos θ, sin θ). Used to place formation slots: a slot's local
     /// offset rotated by the unit's facing gives its world position, with no trig.
+    ///
+    /// The convention this establishes, and which every formation depends on:
+    /// <b>local +X is forward, local +Y is left</b>. It falls out of the maths —
+    /// rotating (1, 0) by a facing returns the facing itself — so a slot in the front
+    /// rank has a positive X offset and a slot on the left of the line has a positive Y.
     /// </summary>
     public FixVec2 Rotate(FixVec2 facing) =>
         new(X * facing.X - Y * facing.Y, X * facing.Y + Y * facing.X);
