@@ -5,10 +5,10 @@
 ; as generated scene diffs, and means the whole presentation layer can be reasoned about
 ; by reading one file instead of clicking through an editor.
 ;
-; Deliberately minimal. Every line here is hand-written and was never loaded by the
-; editor, so anything not strictly needed is a chance to fail on open for no benefit.
-; Input is read directly from key codes in Main.cs, so there are no input actions to
-; declare and no serialised InputEvent blobs to get wrong.
+; Deliberately minimal. Everything here is hand-written, so anything not strictly needed
+; is a chance to fail on open for no benefit. Input is read directly from key codes in
+; Main.cs, so there are no input actions to declare and no serialised InputEvent blobs
+; to get wrong.
 
 config_version=5
 
@@ -17,7 +17,7 @@ config_version=5
 config/name="WAR"
 config/description="Real-time ancient battle tactics."
 run/main_scene="res://Main.tscn"
-config/features=PackedStringArray("4.5", "C#", "Forward Plus")
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 
 [dotnet]
 

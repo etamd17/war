@@ -85,12 +85,16 @@ public sealed partial class TerrainView : Node3D
                 int c = a + res;
                 int d = c + 1;
 
+                // Wound so the faces point up. Get this backwards and the ground is
+                // silently back-face culled: the game runs, nothing errors, and you look
+                // straight through the world at the sky with the trees and the armies
+                // still floating there. Only a screenshot catches it.
                 indices[cursor++] = a;
-                indices[cursor++] = c;
-                indices[cursor++] = b;
                 indices[cursor++] = b;
                 indices[cursor++] = c;
+                indices[cursor++] = b;
                 indices[cursor++] = d;
+                indices[cursor++] = c;
             }
         }
 

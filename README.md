@@ -14,31 +14,61 @@ Built with **Godot 4.5 (.NET)**.
 
 ## Running it
 
-You need two things installed:
+You need **Godot 4.7, the build labelled .NET** (the plain build will not run C#), from
+[godotengine.org/download](https://godotengine.org/download). Open `game/project.godot`
+and press play — Godot builds the C# on first open.
 
-- **.NET 8 SDK** — Godot 4.5's .NET build targets `net8.0`
-- **Godot 4.5, .NET variant** — from [godotengine.org/download](https://godotengine.org/download).
-  The plain build will not run C#.
+Any recent .NET SDK will do. The game targets `net8.0` because that is what GodotSharp
+itself is built against, but a newer SDK compiles it perfectly well; this was developed
+with only the .NET 10 SDK installed.
 
-Then open `game/project.godot` in Godot and press play. Godot will build the C# project
-on first open; give it a moment.
+If you upgrade Godot, the version in the first line of `game/War.Game.csproj` has to
+match the engine exactly.
 
-### If the first run goes wrong
+### Verifying it without opening the editor
 
-The whole game layer compiles and typechecks, but it has never been *rendered* — Godot
-was not installed on the machine it was written on. Expect some first-run friction. The
-likely causes, in order:
+Godot can run the game headless, which makes the presentation layer testable the same way
+the simulation is:
 
-| Symptom | Cause and fix |
-|---|---|
-| `The SDK 'Godot.NET.Sdk/4.5.0' specified could not be found` | Your Godot is a different point release. Open `game/War.Game.csproj` and change the version on line 1 to match — e.g. `Godot.NET.Sdk/4.5.1`. |
-| Godot says C# / .NET is not available | You have the standard build. Download the one labelled **.NET** from the same page. |
-| Build fails on `net8.0` | The .NET 8 SDK isn't installed. `dotnet --list-sdks` should show an `8.x`. |
-| Window opens but is empty or black | The camera starts on the Roman deployment line. Try scrolling out with the mouse wheel, or `WASD` to pan. |
-| HUD overlaps or sits off-screen | Hand-written anchors that have never been seen at a real resolution. Cosmetic; tell me your window size. |
+```bash
+godot --path game --headless --quit-after 600
+```
 
-If it throws, the text in Godot's **Output** panel is the useful thing — paste it over and
-I'll fix it.
+It prints one line naming the armies and the soldier count. That line appearing means the
+battle was built, the terrain meshed, every army instanced and the HUD assembled without
+throwing — no window, nobody watching, and suitable for CI.
+
+The game will also photograph itself and exit:
+
+```bash
+godot --path game --resolution 1600x900 --quit-after 1200 -- --shot=out.png --shot-frame=900 --speed=4
+```
+
+That one is worth having. A renderer that merely starts proves very little — the
+interesting failures are geometry inside out, a camera aimed at nothing, a HUD off the
+edge of the screen. None of those throw and all of them are obvious in one picture. The
+terrain being drawn inside out and invisible was found exactly this way, on a build that
+was otherwise running perfectly and reporting no errors at all.
+
+### Performance
+
+About **155 fps** at 1340 soldiers on a Ryzen 7 3700X and RTX 4070 SUPER, at 1600×900,
+running the editor's Debug build of the C#. That is CPU-bound: the same scene headless,
+drawing nothing at all, runs at 145 fps, so rendering is close to free.
+
+Getting there took two fixes worth knowing about, because neither is visible as draw
+calls or triangles — the scene submits 213 draw calls and 850k primitives, which a modern
+GPU does not notice:
+
+- **`MultiMesh.CustomAabb`.** Every `SetInstanceTransform` marks the bounding box dirty
+  and Godot recomputes it across all instances, so writing n transforms costs O(n²) per
+  unit per frame. Pinning the AABB took it from 36 to 87 fps.
+- **Bulk `MultiMesh.Buffer` writes.** Setting each transform and colour individually
+  means two marshalled calls per soldier per frame. Writing the raw float buffer once per
+  unit took it from 87 to 155 fps.
+
+The speed controls above 2× are limited by the simulation rather than the renderer, and
+the editor runs a Debug build of it; an exported release build is several times faster.
 
 ## Watching a battle without Godot
 

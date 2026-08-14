@@ -21,7 +21,7 @@ public sealed partial class RtsCamera : Node3D
     private TerrainView _terrain = null!;
 
     private Vector3 _focus;
-    private float _distance = 180f;
+    private float _distance = 130f;
     private float _yaw;
     private float _pitchBias;
     private bool _orbiting;

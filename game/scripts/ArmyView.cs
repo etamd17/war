@@ -31,6 +31,18 @@ public sealed partial class ArmyView : Node3D
         /// <summary>Soldiers already laid out as corpses, so they are never touched again.</summary>
         public required bool[] Settled;
 
+        /// <summary>
+        /// The MultiMesh's raw instance buffer, kept between frames.
+        ///
+        /// Twelve floats of transform then four of colour, per instance. Writing it whole
+        /// and assigning once costs one marshalled call per unit; calling
+        /// SetInstanceTransform and SetInstanceColor per soldier costs two per man, which
+        /// at three thousand men is six thousand transitions into native code every
+        /// frame. Because the array persists, corpses simply stay where they were written
+        /// and cost nothing to keep drawing.
+        /// </summary>
+        public required float[] Buffer;
+
         public Vector3 BannerAt;
     }
 
@@ -57,6 +69,24 @@ public sealed partial class ArmyView : Node3D
             // or the buffer is allocated for the wrong stride.
             multiMesh.Mesh = SoldierModels.For(unit.Type);
             multiMesh.InstanceCount = unit.Strength;
+
+            // Pin the bounding box to the whole battlefield.
+            //
+            // Without this, every SetInstanceTransform call marks the MultiMesh's AABB
+            // dirty and Godot recomputes it by walking all of its instances — so writing
+            // n transforms costs O(n²) per unit per frame. It does not show up as draw
+            // calls or triangles (this scene submits 149 calls and 419k primitives,
+            // which a modern GPU eats for breakfast), and it does not show up headless
+            // either. It just quietly eats twenty milliseconds a frame.
+            //
+            // Units cross the whole map, so a map-sized box is the honest answer. The
+            // cost is that a unit off-screen is not frustum-culled — irrelevant at
+            // sixteen MultiMeshes, and a bargain against recomputing the bounds of three
+            // thousand men sixty times a second.
+            float span = terrain.WorldSize;
+            multiMesh.CustomAabb = new Aabb(
+                new Vector3(-64, -64, -64),
+                new Vector3(span + 128, 512, span + 128));
 
             var soldiers = new MultiMeshInstance3D
             {
@@ -117,6 +147,7 @@ public sealed partial class ArmyView : Node3D
                 PennantMaterial = pennantMaterial,
                 Ring = ring,
                 Settled = new bool[unit.Strength],
+                Buffer = new float[unit.Strength * FloatsPerInstance],
                 BannerAt = new Vector3(centre.X, terrain.HeightAt(centre.X, centre.Y), centre.Y),
             });
         }
@@ -144,10 +175,13 @@ public sealed partial class ArmyView : Node3D
         }
     }
 
+    /// <summary>Twelve floats of transform plus four of colour, per instance.</summary>
+    private const int FloatsPerInstance = 16;
+
     private void UpdateSoldiers(BattleState state, UnitView view, float alpha)
     {
         Unit unit = view.Unit;
-        MultiMesh mesh = view.Soldiers.Multimesh;
+        float[] buffer = view.Buffer;
 
         for (int s = unit.FirstSoldier; s < unit.EndSoldier; s++)
         {
@@ -161,21 +195,39 @@ public sealed partial class ArmyView : Node3D
             Vector2 at = dead ? current : previous.Lerp(current, alpha);
 
             float ground = _terrain.HeightAt(at.X, at.Y);
-            Basis facing = SimBridge.Facing(state.Facing[s]);
+            Basis basis = SimBridge.Facing(state.Facing[s]);
 
             if (dead)
             {
                 // Tip the model onto its face and leave it there for good.
-                Basis fallen = facing * new Basis(Vector3.Right, Mathf.Pi * 0.5f);
-                mesh.SetInstanceTransform(slot, new Transform3D(fallen, new Vector3(at.X, ground + 0.08f, at.Y)));
-                mesh.SetInstanceColor(slot, Fallen);
+                basis *= new Basis(Vector3.Right, Mathf.Pi * 0.5f);
+                ground += 0.08f;
                 view.Settled[slot] = true;
-                continue;
             }
 
-            mesh.SetInstanceTransform(slot, new Transform3D(facing, new Vector3(at.X, ground, at.Y)));
-            mesh.SetInstanceColor(slot, Living);
+            Write(buffer, slot, basis, new Vector3(at.X, ground, at.Y), dead ? Fallen : Living);
         }
+
+        view.Soldiers.Multimesh.Buffer = buffer;
+    }
+
+    /// <summary>
+    /// Writes one instance into the raw buffer. Godot stores the transform as a 3×4
+    /// row-major matrix, so each row takes one component from each basis column and then
+    /// the matching component of the origin.
+    /// </summary>
+    private static void Write(float[] buffer, int slot, Basis basis, Vector3 origin, Color colour)
+    {
+        int i = slot * FloatsPerInstance;
+
+        buffer[i + 0] = basis.X.X; buffer[i + 1] = basis.Y.X; buffer[i + 2] = basis.Z.X; buffer[i + 3] = origin.X;
+        buffer[i + 4] = basis.X.Y; buffer[i + 5] = basis.Y.Y; buffer[i + 6] = basis.Z.Y; buffer[i + 7] = origin.Y;
+        buffer[i + 8] = basis.X.Z; buffer[i + 9] = basis.Y.Z; buffer[i + 10] = basis.Z.Z; buffer[i + 11] = origin.Z;
+
+        buffer[i + 12] = colour.R;
+        buffer[i + 13] = colour.G;
+        buffer[i + 14] = colour.B;
+        buffer[i + 15] = colour.A;
     }
 
     private void UpdateBanner(BattleState state, UnitView view, bool isSelected)

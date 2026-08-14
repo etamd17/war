@@ -1,12 +1,14 @@
-<Project Sdk="Godot.NET.Sdk/4.5.0">
+<Project Sdk="Godot.NET.Sdk/4.7.1">
 
   <!--
-    If Godot complains about the SDK version, change it above to match the Godot you
-    have installed - the Sdk attribute has to line up with the engine build.
+    The Sdk version above must match the installed engine exactly. If you upgrade Godot,
+    change it: the version is written on the tin, and the engine also ships the matching
+    package at GodotSharp/Tools/nupkgs/ if you ever need to confirm it.
 
-    TargetFramework must stay net8.0: that is what Godot 4.5's .NET build expects, and
-    War.Sim multi-targets net8.0 and net10.0 precisely so this project and the test
-    project can each use the one they need.
+    TargetFramework stays net8.0 because that is what GodotSharp itself is built against
+    (its nupkg ships lib/net8.0 and nothing else). War.Sim multi-targets net8.0 and
+    net10.0 precisely so this project and the test project can each take the one they
+    need without either constraining the other.
   -->
 
   <PropertyGroup>

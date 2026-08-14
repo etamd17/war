@@ -42,11 +42,67 @@ public sealed partial class Main : Node3D
 
     private static double StepSeconds => 1.0 / SimConstants.TickRate;
 
+    private bool _reported;
+    private int _frames;
+    private string? _shotPath;
+    private int _shotFrame = 240;
+
     public override void _Ready()
     {
         BuildBattle();
         BuildWorld();
         BuildHud();
+
+        // Also the headless smoke test: `godot --headless --quit-after 600` runs the
+        // real _Ready and _Process, so this line appearing means the battle was built,
+        // the terrain meshed, every army instanced and the HUD assembled without
+        // throwing — which is verifiable in CI, with no window and nobody watching.
+        GD.Print($"WAR — {_sim.State.Armies[0].Name} vs {_sim.State.Armies[1].Name}, " +
+                 $"{_sim.State.SoldierCount} soldiers in {_sim.State.Units.Length} units");
+
+        ReadScreenshotArgs();
+    }
+
+    /// <summary>
+    /// Lets the game photograph itself and exit:
+    ///   godot --path game -- --shot=out.png --shot-frame=600
+    ///
+    /// Worth the twenty lines. A build that merely starts proves very little about a
+    /// renderer — the interesting failures are a camera pointing at nothing, geometry
+    /// inside out, a HUD off the edge of the screen. None of those throw, and all of
+    /// them are obvious in one picture.
+    /// </summary>
+    private void ReadScreenshotArgs()
+    {
+        foreach (string argument in OS.GetCmdlineUserArgs())
+        {
+            if (argument.StartsWith("--shot=", StringComparison.Ordinal))
+                _shotPath = argument["--shot=".Length..];
+            else if (argument.StartsWith("--shot-frame=", StringComparison.Ordinal) &&
+                     int.TryParse(argument["--shot-frame=".Length..], out int frame))
+                _shotFrame = frame;
+            else if (argument.StartsWith("--speed=", StringComparison.Ordinal) &&
+                     int.TryParse(argument["--speed=".Length..], out int speed))
+                _speed = Mathf.Clamp(speed, 1, 20);
+        }
+    }
+
+    private void CaptureIfAsked()
+    {
+        if (_shotPath == null || ++_frames < _shotFrame) return;
+
+        Image image = GetViewport().GetTexture().GetImage();
+        Error error = image.SavePng(_shotPath);
+
+        GD.Print(error == Error.Ok
+            ? $"WAR — wrote {_shotPath} at tick {_sim.State.Tick}"
+            : $"WAR — screenshot failed: {error}");
+
+        GD.Print($"WAR — render: {Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame)} draw calls, " +
+                 $"{Performance.GetMonitor(Performance.Monitor.RenderTotalPrimitivesInFrame):N0} primitives, " +
+                 $"{Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame)} objects");
+
+        GetTree().Quit();
     }
 
     // ------------------------------------------------------------------- setup
@@ -148,11 +204,18 @@ public sealed partial class Main : Node3D
             {
                 BackgroundMode = Godot.Environment.BGMode.Sky,
                 Sky = new Sky { SkyMaterial = sky },
+                // Ambient kept low so the sun actually models the ground. At 0.65 the
+                // hillsides were lit from every direction at once and the ridge — the
+                // thing the whole map is arranged around — read as flat paint.
                 AmbientLightSource = Godot.Environment.AmbientSource.Sky,
-                AmbientLightEnergy = 0.65f,
+                AmbientLightEnergy = 0.35f,
+
+                // Enough haze for aerial perspective and no more. The first value tried
+                // here was four times this and turned the entire field into pale fog
+                // with an army somewhere in it.
                 FogEnabled = true,
-                FogDensity = 0.0012f,
-                FogLightColor = new Color(0.66f, 0.71f, 0.76f),
+                FogDensity = 0.0003f,
+                FogLightColor = new Color(0.70f, 0.75f, 0.80f),
             },
         });
     }
@@ -188,6 +251,18 @@ public sealed partial class Main : Node3D
         float alpha = (float)Mathf.Clamp(_accumulator / StepSeconds, 0, 1);
         _armies.Update(_sim.State, alpha, _selected);
         _hud.Refresh(_selected);
+
+        if (_sim.IsOver && !_reported)
+        {
+            _reported = true;
+            int seconds = _sim.State.Tick / SimConstants.TickRate;
+            string victor = _sim.State.Victor >= 0
+                ? _sim.State.Armies[_sim.State.Victor].Name
+                : "nobody";
+            GD.Print($"WAR — {victor} holds the field after {seconds / 60:D2}:{seconds % 60:D2}");
+        }
+
+        CaptureIfAsked();
     }
 
     private void StepSimulation(double delta)
