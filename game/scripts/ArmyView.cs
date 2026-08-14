@@ -147,7 +147,7 @@ public sealed partial class ArmyView : Node3D
                 PennantMaterial = pennantMaterial,
                 Ring = ring,
                 Settled = new bool[unit.Strength],
-                Buffer = new float[unit.Strength * FloatsPerInstance],
+                Buffer = new float[unit.Strength * InstanceBuffer.Stride],
                 BannerAt = new Vector3(centre.X, terrain.HeightAt(centre.X, centre.Y), centre.Y),
             });
         }
@@ -174,9 +174,6 @@ public sealed partial class ArmyView : Node3D
             UpdateBanner(state, view, selected.Contains(unit.Id));
         }
     }
-
-    /// <summary>Twelve floats of transform plus four of colour, per instance.</summary>
-    private const int FloatsPerInstance = 16;
 
     private void UpdateSoldiers(BattleState state, UnitView view, float alpha)
     {
@@ -205,29 +202,10 @@ public sealed partial class ArmyView : Node3D
                 view.Settled[slot] = true;
             }
 
-            Write(buffer, slot, basis, new Vector3(at.X, ground, at.Y), dead ? Fallen : Living);
+            InstanceBuffer.Write(buffer, slot, basis, new Vector3(at.X, ground, at.Y), dead ? Fallen : Living);
         }
 
         view.Soldiers.Multimesh.Buffer = buffer;
-    }
-
-    /// <summary>
-    /// Writes one instance into the raw buffer. Godot stores the transform as a 3×4
-    /// row-major matrix, so each row takes one component from each basis column and then
-    /// the matching component of the origin.
-    /// </summary>
-    private static void Write(float[] buffer, int slot, Basis basis, Vector3 origin, Color colour)
-    {
-        int i = slot * FloatsPerInstance;
-
-        buffer[i + 0] = basis.X.X; buffer[i + 1] = basis.Y.X; buffer[i + 2] = basis.Z.X; buffer[i + 3] = origin.X;
-        buffer[i + 4] = basis.X.Y; buffer[i + 5] = basis.Y.Y; buffer[i + 6] = basis.Z.Y; buffer[i + 7] = origin.Y;
-        buffer[i + 8] = basis.X.Z; buffer[i + 9] = basis.Y.Z; buffer[i + 10] = basis.Z.Z; buffer[i + 11] = origin.Z;
-
-        buffer[i + 12] = colour.R;
-        buffer[i + 13] = colour.G;
-        buffer[i + 14] = colour.B;
-        buffer[i + 15] = colour.A;
     }
 
     private void UpdateBanner(BattleState state, UnitView view, bool isSelected)

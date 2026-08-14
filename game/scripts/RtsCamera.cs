@@ -125,6 +125,9 @@ public sealed partial class RtsCamera : Node3D
         }
     }
 
+    /// <summary>Sets the zoom directly. Used by the screenshot harness to frame a shot.</summary>
+    public void SetDistance(float distance) => _distance = Mathf.Clamp(distance, MinDistance, MaxDistance);
+
     /// <summary>Centres the camera on a point without changing the zoom or heading.</summary>
     public void LookAtGround(Vector3 point) => _focus = new Vector3(point.X, 0, point.Z);
 

@@ -47,6 +47,8 @@ public sealed partial class Main : Node3D
     private int _frames;
     private string? _shotPath;
     private int _shotFrame = 240;
+    private bool _beginImmediately;
+    private int _shotAtMissiles;
 
     public override void _Ready()
     {
@@ -62,6 +64,7 @@ public sealed partial class Main : Node3D
                  $"{_sim.State.SoldierCount} soldiers in {_sim.State.Units.Length} units");
 
         ReadScreenshotArgs();
+        if (_beginImmediately) BeginBattle();
     }
 
     /// <summary>
@@ -85,12 +88,43 @@ public sealed partial class Main : Node3D
             else if (argument.StartsWith("--speed=", StringComparison.Ordinal) &&
                      int.TryParse(argument["--speed=".Length..], out int speed))
                 _speed = Mathf.Clamp(speed, 1, 20);
+
+            // Skip deployment. The automated screenshot and headless smoke runs have
+            // nobody to press Enter for them.
+            else if (argument == "--begin")
+                _beginImmediately = true;
+
+            // Capture on an event rather than on a frame number. Hunting for the frame
+            // where something is happening is guesswork; waiting for it is not.
+            else if (argument.StartsWith("--shot-at-missiles=", StringComparison.Ordinal) &&
+                     int.TryParse(argument["--shot-at-missiles=".Length..], out int volley))
+                _shotAtMissiles = volley;
+
+            // Framing, so a verification shot can be aimed at the thing being verified.
+            else if (argument.StartsWith("--dist=", StringComparison.Ordinal) &&
+                     float.TryParse(argument["--dist=".Length..], out float distance))
+                _camera.SetDistance(distance);
+            else if (argument.StartsWith("--look=", StringComparison.Ordinal))
+            {
+                string[] parts = argument["--look=".Length..].Split(',');
+                if (parts.Length == 2 &&
+                    float.TryParse(parts[0], out float lx) && float.TryParse(parts[1], out float lz))
+                    _camera.LookAtGround(new Vector3(lx, 0, lz));
+            }
         }
     }
 
     private void CaptureIfAsked()
     {
-        if (_shotPath == null || ++_frames < _shotFrame) return;
+        if (_shotPath == null) return;
+
+        _frames++;
+
+        bool ready = _shotAtMissiles > 0
+            ? _sim.State.MissileCount >= _shotAtMissiles
+            : _frames >= _shotFrame;
+
+        if (!ready) return;
 
         Image image = GetViewport().GetTexture().GetImage();
         Error error = image.SavePng(_shotPath);
@@ -99,6 +133,7 @@ public sealed partial class Main : Node3D
             ? $"WAR — wrote {_shotPath} at tick {_sim.State.Tick}"
             : $"WAR — screenshot failed: {error}");
 
+        GD.Print($"WAR — {_sim.State.MissileCount} missiles in flight");
         GD.Print($"WAR — render: {Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame)} draw calls, " +
                  $"{Performance.GetMonitor(Performance.Monitor.RenderTotalPrimitivesInFrame):N0} primitives, " +
                  $"{Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame)} objects");
