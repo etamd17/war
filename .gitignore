@@ -1,0 +1,31 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Godot
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+game/bin/
+game/obj/
+game/.mono/
+game/data_*/
+mono_crash.*.json
+
+# Godot generates these; we keep the hand-written ones only
+game/*.sln
+game/*.suo
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Local
+*.log
+/scratch/
