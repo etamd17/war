@@ -1,0 +1,29 @@
+<Project Sdk="Godot.NET.Sdk/4.5.0">
+
+  <!--
+    If Godot complains about the SDK version, change it above to match the Godot you
+    have installed - the Sdk attribute has to line up with the engine build.
+
+    TargetFramework must stay net8.0: that is what Godot 4.5's .NET build expects, and
+    War.Sim multi-targets net8.0 and net10.0 precisely so this project and the test
+    project can each use the one they need.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <RootNamespace>War.Game</RootNamespace>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The one-way dependency that the whole architecture rests on: the game knows about
+      the simulation, and the simulation knows nothing about Godot. No game rule may
+      live on this side of the line.
+    -->
+    <ProjectReference Include="..\sim\War.Sim\War.Sim.csproj" />
+  </ItemGroup>
+
+</Project>

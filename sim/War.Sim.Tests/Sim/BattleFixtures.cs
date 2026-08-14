@@ -44,9 +44,16 @@ public static class BattleFixtures
         return terrain;
     }
 
-    /// <summary>The far-corner unit that keeps the army-break check from ending a micro-fight.</summary>
+    /// <summary>
+    /// The far-corner unit that keeps the army-break check from ending a micro-fight.
+    ///
+    /// Sized well above the unit under test on purpose. Routing counts as lost for
+    /// victory purposes, so a single 120-man unit breaking takes its whole army below
+    /// the thirty-percent line and ends the battle on that very tick — which silently
+    /// truncated several tests to a single frame of simulation.
+    /// </summary>
     private static UnitBlueprint DistantReserve(Faction faction) =>
-        new() { TypeId = Roster.GeneralOf(faction).Id, Strength = 24 };
+        new() { TypeId = Roster.GeneralOf(faction).Id, Strength = 200 };
 
     /// <summary>Parks the reserves in opposite corners, out of everyone's way.</summary>
     private static void StowReserves(BattleState state, params Unit[] reserves)
@@ -257,6 +264,57 @@ public static class BattleFixtures
                         new UnitBlueprint { TypeId = "carthage_sacred_band_cavalry" },
                         new UnitBlueprint { TypeId = "carthage_general" },
                     ],
+                },
+            ],
+        };
+    }
+
+    /// <summary>
+    /// A full-scale battle: twenty units a side, around 2400 individually simulated
+    /// soldiers. This is the performance target the whole data layout exists to meet.
+    /// </summary>
+    public static BattleSetup GrandBattle(uint seed = 1)
+    {
+        string[] rome =
+        [
+            "rome_velites", "rome_velites", "rome_archers",
+            "rome_hastati", "rome_hastati", "rome_hastati", "rome_hastati",
+            "rome_principes", "rome_principes", "rome_principes", "rome_principes",
+            "rome_triarii", "rome_triarii", "rome_triarii",
+            "rome_equites", "rome_equites", "rome_equites",
+            "rome_archers", "rome_hastati", "rome_general",
+        ];
+
+        string[] carthage =
+        [
+            "carthage_balearic_slingers", "carthage_balearic_slingers",
+            "carthage_libyan_spearmen", "carthage_libyan_spearmen", "carthage_libyan_spearmen",
+            "carthage_libyan_spearmen", "carthage_poeni", "carthage_poeni",
+            "carthage_iberian", "carthage_iberian", "carthage_iberian",
+            "carthage_sacred_band", "carthage_sacred_band",
+            "carthage_numidian_cavalry", "carthage_numidian_cavalry",
+            "carthage_sacred_band_cavalry", "carthage_sacred_band_cavalry",
+            "carthage_elephants", "carthage_elephants", "carthage_general",
+        ];
+
+        return new BattleSetup
+        {
+            Terrain = TerrainGenerator.Generate(new BattlefieldSettings { Seed = seed }),
+            Seed = seed,
+            Separation = Fix.FromInt(360),
+            Armies =
+            [
+                new ArmyBlueprint
+                {
+                    Faction = Faction.Rome,
+                    Name = "Rome",
+                    Units = rome.Select(id => new UnitBlueprint { TypeId = id }).ToArray(),
+                },
+                new ArmyBlueprint
+                {
+                    Faction = Faction.Carthage,
+                    Name = "Carthage",
+                    Units = carthage.Select(id => new UnitBlueprint { TypeId = id }).ToArray(),
                 },
             ],
         };

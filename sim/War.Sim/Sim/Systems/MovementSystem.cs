@@ -173,8 +173,13 @@ public static class MovementSystem
         TurnAnchorToward(state, unit, facing);
     }
 
-    /// <summary>How much of its turn rate a unit keeps once it is locked in melee.</summary>
-    private static readonly Fix EngagedTurnScale = Fix.Ratio(18, 100);
+    /// <summary>
+    /// How much of its turn rate a unit keeps once it is locked in melee. At 8% a
+    /// well-drilled formation needs the better part of eight seconds to wheel ninety
+    /// degrees while fighting — long enough that a flank attack is a real opening
+    /// rather than a brief inconvenience.
+    /// </summary>
+    private static readonly Fix EngagedTurnScale = Fix.Ratio(8, 100);
 
     private static void TurnAnchorToward(BattleState state, Unit unit, FixVec2 desired)
     {

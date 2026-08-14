@@ -36,11 +36,13 @@ dependencies.**
 ```
 F:\war
 ├── DESIGN.md
-├── War.sln
+├── War.slnx
 ├── sim/
 │   ├── War.Sim/            pure C# class library — NO Godot references
 │   └── War.Sim.Tests/      xUnit — determinism, combat math, morale, formations
-└── game/                   Godot 4.5 .NET project — rendering, input, UI only
+├── game/                   Godot 4.5 .NET project — rendering, input, UI only
+└── tools/
+    └── War.Watch/          terminal renderer and balance sweeper, no engine needed
 ```
 
 `War.Sim` is a headless, deterministic battle simulation that can run in a console, in
@@ -87,6 +89,10 @@ Rules the sim obeys:
 - **Deterministic iteration order.** No `Dictionary` iteration, no unordered parallelism
   affecting results. Arrays indexed by id.
 - **No wall-clock, no `DateTime`, no unseeded `Random`.**
+- **`FixVec2Sum` for any average over more than a handful of positions.** Q16.16
+  saturates at 32768, so summing 140 soldier positions to find a unit's centre wraps
+  negative and puts the unit hundreds of metres off the map. Nothing throws — the unit
+  stops being targeted and silently drops out of the battle. Accumulate in 64 bits.
 
 A battle is therefore reproducible from `(seed, army lists, terrain params, command log)`.
 
@@ -138,25 +144,47 @@ offense  = AttackSkill
          + ChargeBonus            (decays over 5 s after impact)
          + BonusVs(targetClass)   (spear vs cavalry, etc.)
          + FlankBonus             (+4 flank, +8 rear)
-         + HeightBonus            (up to +4 for high ground)
-         - FatiguePenalty         (up to -6 when exhausted)
+         − SlopePenalty           (up to ±4, from the gradient underfoot)
+         + FormationBonus
+         − FatiguePenalty         (up to −6 when exhausted)
 
 defense  = DefenceSkill
          + Shield                 (only vs attacks from front or left)
          + Armour
-         + TerrainBonus
-         - FatiguePenalty
+         + FormationBonus         (front or flank, depending where the blow lands)
+         − FatiguePenalty
 
-hitChance = clamp(0.35 + 0.03 × (offense − defense), 0.05, 0.90)
+hitChance = clamp(0.04 + 0.012 × (offense − defense + 7), 0.008, 0.35)
 ```
 
-On a hit, damage is the weapon's damage minus a fraction of armour. Most soldiers have
-1–3 HP, so most connecting hits kill. Attack interval ~1.2 s with per-soldier jitter, so
-casualties arrive as a stream rather than in lockstep pulses.
+Two calibration details that are not cosmetic:
 
-**Facing is real.** A soldier's shield only counts against attacks arriving in its
-frontal 180°, and attacks from the flank or rear carry both a to-hit bonus and a heavy
-morale penalty on the target unit. This is what makes manoeuvre matter more than stats.
+- **The `+7` offset.** Defence sums three stats and offense is essentially one, so a raw
+  subtraction sits permanently on the floor and every modifier on either side becomes
+  academic. The offset recentres a normal head-on matchup on the base chance.
+- **The base chance is low and the tempo is slow.** Most blows in a real melee were
+  blocked, parried, or turned. Tuned so about fifty men in contact kill roughly one man
+  a second between them, which puts a decisive clash at a minute or two and lets the
+  player react to it. Four times that rate destroyed a 120-man unit in ten seconds.
+
+A single `MeleeTempo` constant scales every attack interval, so the pace of the whole
+battle is one knob and the roster keeps its relative timings.
+
+**Facing is real, and formations are flanked as a body.** The attack arc is measured
+against the *formation's* facing, not each soldier's. Measuring it per man looks more
+faithful and destroys the mechanic: soldiers turn to face whoever is hitting them, so
+the penalty cancels within a second of contact and a rear attack ends up no better than
+a frontal one. A body of men drawn up one way cannot all turn — and a unit already in
+melee wheels at 8% of its rate, so pinning it holds the flank open. Formations that
+genuinely face outward (square) and men who have already broken are flanked individually,
+because there is no formation left to flank.
+
+**Reach is pairwise and measured surface to surface** — `own reach + both collision
+radii`. Centre-to-centre reach means an elephant, at 1.5 m radius against an
+infantryman's 0.4 m, is held 1.9 m away by separation and can never land a blow at all.
+
+Units whose whole point is going *through* people — elephants, chariots — strike several
+men per swing via `AttacksPerStrike`.
 
 ### 4.4 Morale — the system that actually decides battles
 
@@ -187,8 +215,12 @@ the battle. That trade-off is deliberate.
 
 A heightmap grid over the battlefield, plus a forest mask and a ground-type layer.
 
-- **Elevation** — uphill attackers take a to-hit penalty and burn fatigue faster;
-  downhill charges hit harder; high ground gives a morale bonus and extends missile range.
+- **Elevation** — scored from the **slope underfoot**, not the height difference between
+  the two men. Two soldiers close enough to fight are about a metre and a half apart; on
+  a normal hillside that is twenty centimetres of height, so scoring elevation gives
+  almost exactly zero and terrain stops mattering. What decides the exchange is that one
+  man is on the slope below the other. High ground also gives a morale bonus and extends
+  missile range, both of which do use true elevation.
 - **Forest** — blocks line of sight (units go unspotted until close), degrades formation
   cohesion, slows movement, and cancels the cavalry charge bonus. Ambushes work.
 - **Ground type** — mud slows and tires; rock is fast; fords slow river crossings to a
@@ -208,6 +240,12 @@ Line, Column, Wedge, Square, Testudo, Phalanx. Each is a slot-generation functio
 
 Width and depth are player-adjustable by dragging, RTW-style. Thin lines cover ground
 and avoid envelopment; deep lines hold longer and push harder.
+
+A unit's **anchor is the middle of its front rank**, not its centre of mass. Placing a
+unit places the line you can see, and a unit ordered to a spot arrives with its front
+rank on that spot. Men seek slots relative to the anchor rather than to the unit's own
+centre — if the formation chased its centre of mass, casualties on one flank would drag
+the whole line sideways.
 
 ### 4.7 Combined arms
 

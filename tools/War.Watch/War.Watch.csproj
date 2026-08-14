@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A terminal view of a battle.
+
+    This exists because the simulation genuinely does not need an engine to run, and it
+    is worth being able to prove that. It is also the fastest way to watch a balance
+    change: run a battle to completion in a couple of seconds and read the result,
+    without opening Godot at all.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>War.Watch</RootNamespace>
+    <AssemblyName>war-watch</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\sim\War.Sim\War.Sim.csproj" />
+  </ItemGroup>
+
+</Project>

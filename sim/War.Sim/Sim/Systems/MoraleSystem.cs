@@ -295,7 +295,12 @@ public static class MoraleSystem
                 : MoraleState.Steady;
     }
 
-    private static void Break(BattleState state, Unit unit)
+    /// <summary>
+    /// Breaks a unit outright. Normally reached through the morale thresholds, but
+    /// exposed because scripted scenarios, campaign events, and tests all legitimately
+    /// need to say "this unit routs now" without staging a whole battle to cause it.
+    /// </summary>
+    public static void Break(BattleState state, Unit unit)
     {
         unit.MoraleState = MoraleState.Routing;
         unit.BreakTicks = 0;

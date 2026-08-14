@@ -84,7 +84,7 @@ public static class SimConstants
     /// is decided by one side breaking, rather than by one side being killed to a man in
     /// half a minute.
     /// </summary>
-    public static readonly Fix MeleeTempo = Fix.FromInt(2);
+    public static readonly Fix MeleeTempo = Fix.Ratio(26, 10);
 
     /// <summary>Attack bonus for striking a soldier from outside his frontal arc.</summary>
     public const int FlankAttackBonus = 4;
@@ -158,10 +158,20 @@ public static class SimConstants
 
     // ------------------------------------------------------------------- morale
 
-    /// <summary>Morale runs 0 to 100. Units break well before they run out of men.</summary>
-    public static readonly Fix MoraleWaveringThreshold = Fix.FromInt(25);
-    public static readonly Fix MoraleBreakThreshold = Fix.FromInt(10);
-    public static readonly Fix MoraleRallyThreshold = Fix.FromInt(30);
+    /// <summary>
+    /// Morale runs 0 to 100, and a fresh unit of decent troops sits near 80. These
+    /// thresholds are set high on purpose.
+    ///
+    /// With a break line at 10 the numbers said units broke "well before they ran out of
+    /// men", and battles said otherwise: units were grinding down to eighty percent
+    /// casualties before anyone left, and the winning army was finishing with half its
+    /// strength gone. That is not what happened in ancient battles and it is not what
+    /// the genre feels like — a beaten unit leaves at around a third to a half, and the
+    /// victor walks off the field largely intact.
+    /// </summary>
+    public static readonly Fix MoraleWaveringThreshold = Fix.FromInt(45);
+    public static readonly Fix MoraleBreakThreshold = Fix.FromInt(30);
+    public static readonly Fix MoraleRallyThreshold = Fix.FromInt(50);
 
     /// <summary>Ticks a unit must hold below the break line before it actually routs.</summary>
     public const int BreakConfirmTicks = 20;
