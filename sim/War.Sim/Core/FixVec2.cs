@@ -198,3 +198,47 @@ public readonly struct FixVec2 : IEquatable<FixVec2>
     public override int GetHashCode() => HashCode.Combine(X.Raw, Y.Raw);
     public override string ToString() => $"({X}, {Y})";
 }
+
+/// <summary>
+/// Accumulates positions in 64 bits so an average can be taken safely.
+///
+/// This exists because of a real and thoroughly invisible bug. Q16.16 saturates at
+/// 32768, and a unit of 140 men standing at x = 256 sums to 35,840 — which wraps
+/// straight through to negative. The unit's computed centre then lands several hundred
+/// metres off the map in the wrong direction, and since almost everything keys off unit
+/// centres, the unit stops being shot at, stops being targeted, and stops taking part
+/// in the battle. Nothing throws. Nothing is obviously wrong. The unit just quietly
+/// ceases to exist.
+///
+/// Any mean over more than a handful of positions must accumulate in a wider type. The
+/// individual values fit comfortably; the sum does not.
+/// </summary>
+public struct FixVec2Sum
+{
+    private long _x;
+    private long _y;
+    private int _count;
+
+    public void Add(FixVec2 value)
+    {
+        _x += value.X.Raw;
+        _y += value.Y.Raw;
+        _count++;
+    }
+
+    /// <summary>Adds a position counted <paramref name="weight"/> times.</summary>
+    public void Add(FixVec2 value, int weight)
+    {
+        _x += (long)value.X.Raw * weight;
+        _y += (long)value.Y.Raw * weight;
+        _count += weight;
+    }
+
+    public int Count => _count;
+
+    public FixVec2 Mean => _count <= 0
+        ? FixVec2.Zero
+        : new FixVec2(Fix.FromRaw((int)(_x / _count)), Fix.FromRaw((int)(_y / _count)));
+
+    public override string ToString() => $"sum of {_count} -> {Mean}";
+}

@@ -155,6 +155,29 @@ public sealed class SpatialHash
     }
 
     /// <summary>
+    /// How many indexed ids lie within <paramref name="radius"/>. Cheaper than
+    /// <see cref="Query"/> when only the count is wanted — which is most of the time,
+    /// since "am I outnumbered here?" is asked far more often than "by whom?".
+    /// </summary>
+    public int CountWithin(FixVec2 centre, Fix radius, FixVec2[] positions)
+    {
+        CellRange(centre, radius, out int minX, out int minY, out int maxX, out int maxY);
+        long radiusSqr = FixMath.SqrRaw(radius);
+        int found = 0;
+
+        for (int cy = minY; cy <= maxY; cy++)
+        {
+            for (int cx = minX; cx <= maxX; cx++)
+            {
+                foreach (int id in CellItems(cx, cy))
+                    if (FixVec2.SqrDistanceRaw(centre, positions[id]) <= radiusSqr) found++;
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
     /// The nearest indexed id to <paramref name="centre"/> within
     /// <paramref name="radius"/>, or −1. Searches outward a ring of cells at a time and
     /// stops as soon as no closer result is possible.

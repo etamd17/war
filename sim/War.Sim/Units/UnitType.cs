@@ -88,6 +88,17 @@ public sealed class UnitType
     /// <summary>How far a soldier of this type can reach to strike.</summary>
     public Fix Reach { get; init; } = SimConstants.MeleeReach;
 
+    /// <summary>
+    /// How many enemies this unit's men hit per swing.
+    ///
+    /// One for anything holding a weapon. More for things that go <em>through</em> people:
+    /// an elephant in contact with eight legionaries is not politely duelling one of them,
+    /// and a chariot does not drive along a rank hitting a single man. Without this an
+    /// elephant is just a slow, expensive soldier with a lot of hit points, which is very
+    /// much not what it was for.
+    /// </summary>
+    public int AttacksPerStrike { get; init; } = 1;
+
     // ----------------------------------------------------------------- counters
 
     /// <summary>Added against cavalry, chariots, and elephants. This is what a spear wall is for.</summary>

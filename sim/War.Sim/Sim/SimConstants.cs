@@ -43,17 +43,48 @@ public static class SimConstants
 
     // ------------------------------------------------------------------- combat
 
-    /// <summary>Base probability that a strike lands before any modifiers.</summary>
-    public static readonly Fix BaseHitChance = Fix.Ratio(35, 100);
+    /// <summary>
+    /// Base probability that a strike lands at a typical attack-versus-defence
+    /// differential.
+    ///
+    /// Deliberately low. Most blows in a real melee were blocked, parried, turned by a
+    /// shield, or simply missed; men did not fall at every exchange. Tuned together with
+    /// <see cref="MeleeTempo"/> so that roughly fifty men in contact kill about one man
+    /// per second between them — which puts a decisive head-on clash between equal
+    /// heavy infantry at a minute or two, decided by one side breaking. At four times
+    /// this rate a hundred and twenty men evaporated in ten seconds and the battle was
+    /// over before the player could react to it.
+    /// </summary>
+    public static readonly Fix BaseHitChance = Fix.Ratio(40, 1000);
+
+    /// <summary>
+    /// Recentres offense against defence. Defence sums three stats — skill, shield and
+    /// armour — while offense is essentially one, so the two are not on the same scale
+    /// and a raw subtraction sits permanently near the floor. This offset puts a normal
+    /// head-on matchup at <see cref="BaseHitChance"/> instead, which is what makes the
+    /// modifiers on either side meaningful rather than academic.
+    /// </summary>
+    public static readonly Fix DefenceOffset = Fix.FromInt(7);
 
     /// <summary>How much each point of offense-over-defence shifts the hit chance.</summary>
-    public static readonly Fix HitChancePerPoint = Fix.Ratio(3, 100);
+    public static readonly Fix HitChancePerPoint = Fix.Ratio(12, 1000);
 
     /// <summary>Even a hopeless attacker connects sometimes.</summary>
-    public static readonly Fix MinHitChance = Fix.Ratio(5, 100);
+    public static readonly Fix MinHitChance = Fix.Ratio(8, 1000);
 
     /// <summary>And even a hopeless defender is never a free kill.</summary>
-    public static readonly Fix MaxHitChance = Fix.Ratio(90, 100);
+    public static readonly Fix MaxHitChance = Fix.Ratio(35, 100);
+
+    /// <summary>
+    /// Global multiplier on how often men swing. The roster carries the relative timings
+    /// — a spearman is slower than a swordsman, an elephant slower still — and this one
+    /// knob sets the pace of the whole battle without touching any of them.
+    ///
+    /// Tuned so a head-on fight between evenly matched heavy infantry takes minutes and
+    /// is decided by one side breaking, rather than by one side being killed to a man in
+    /// half a minute.
+    /// </summary>
+    public static readonly Fix MeleeTempo = Fix.FromInt(2);
 
     /// <summary>Attack bonus for striking a soldier from outside his frontal arc.</summary>
     public const int FlankAttackBonus = 4;
@@ -67,13 +98,49 @@ public static class SimConstants
     /// <summary>Behind this dot product an attack counts as coming from the rear.</summary>
     public static readonly Fix RearArcCosine = Fix.Ratio(-7, 10);
 
-    /// <summary>Attack points per metre of height advantage, capped by <see cref="MaxHeightBonus"/>.</summary>
-    public static readonly Fix HeightBonusPerMetre = Fix.Ratio(4, 10);
+    /// <summary>
+    /// Attack points per unit of ground <em>slope</em> between two men in contact.
+    ///
+    /// Slope rather than elevation difference, which sounds like a detail and is not.
+    /// Two soldiers close enough to hit each other are about a metre and a half apart;
+    /// on a one-in-eight hillside that is twenty centimetres of height, and scoring the
+    /// bonus on elevation gives almost exactly zero — terrain stops mattering, and a
+    /// unit that fought its way to the crest gains nothing for it. What actually decides
+    /// the exchange is that one man is on the slope below the other: poor footing,
+    /// striking upward, the other man's weight coming down on him. That is the gradient,
+    /// and it does not shrink just because the two of them are standing close together.
+    /// </summary>
+    public static readonly Fix SlopeCombatFactor = Fix.FromInt(16);
 
     public const int MaxHeightBonus = 4;
 
     /// <summary>Seconds over which a charge bonus bleeds away once contact is made.</summary>
     public static readonly Fix ChargeDecaySeconds = Fix.FromInt(5);
+
+    // ----------------------------------------------------------------- missiles
+
+    // Missiles are deliberately far less lethal per shot than a sword stroke. Ancient
+    // archery suppressed, disordered, and wore down; it rarely decided a battle on its
+    // own. These numbers put a good archer unit at roughly thirty casualties over
+    // thirty seconds of sustained fire against a shielded line, and far more against
+    // an unarmoured one — which is the difference that should drive your decisions.
+    public static readonly Fix MissileBaseHitChance = Fix.Ratio(10, 100);
+    public static readonly Fix MissileHitChancePerPoint = Fix.Ratio(2, 100);
+    public static readonly Fix MissileMinHitChance = Fix.Ratio(2, 100);
+    public static readonly Fix MissileMaxHitChance = Fix.Ratio(55, 100);
+
+    /// <summary>
+    /// How close a shot must land to a man to have a chance of hitting him. This is what
+    /// makes formation density matter: the same volley into a packed line and into loose
+    /// order finds very different numbers of bodies, before any modifier is applied.
+    /// </summary>
+    public static readonly Fix MissileBodyRadius = Fix.Ratio(6, 10);
+
+    /// <summary>Scatter as a fraction of the distance shot, added to a fixed metre.</summary>
+    public static readonly Fix MissileScatterPerMetre = Fix.Ratio(5, 100);
+
+    /// <summary>Fraction of missile hits that woodland canopy stops outright.</summary>
+    public static readonly Fix ForestMissileCover = Fix.Ratio(45, 100);
 
     // ------------------------------------------------------------------ fatigue
 
