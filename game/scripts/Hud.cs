@@ -3,25 +3,35 @@ using System.Collections.Generic;
 using Godot;
 using War.Sim.Core;
 using War.Sim.Sim;
+using War.Sim.Units;
 
 namespace War.Game;
 
 /// <summary>
-/// A unit card: the whole state of a body of men in about sixty pixels.
+/// A unit card: the whole state of a body of men in about seventy pixels.
 ///
 /// Strength, morale and fatigue, because those are the three things a commander decides
 /// on. A unit at half strength and steady is still a unit; a unit at full strength and
-/// wavering is about to stop being one, and the card has to make that difference
-/// obvious at a glance while the battle is moving.
+/// wavering is about to stop being one, and the card has to make that difference obvious
+/// at a glance while the battle is moving.
+///
+/// Formation and stance are on the card for a blunter reason: the keys that change them
+/// used to do so invisibly. Pressing F cycled a unit from line to testudo with nothing on
+/// screen to say so — the men re-formed, but a hundred and twenty figures shuffling at
+/// battle-camera range reads as noise. A tactical option the player cannot confirm is a
+/// tactical option the player will not use.
 /// </summary>
 public sealed partial class UnitCard : Panel
 {
-    public const int CardWidth = 124;
-    public const int CardHeight = 68;
+    public const int CardWidth = 132;
+    public const int CardHeight = 84;
 
     private readonly Unit _unit;
+    private readonly BattleState _state;
     private Label _name = null!;
     private Label _count = null!;
+    private Label _formation = null!;
+    private Label _status = null!;
     private ColorRect _strengthBar = null!;
     private ColorRect _moraleBar = null!;
     private ColorRect _fatigueBar = null!;
@@ -30,9 +40,10 @@ public sealed partial class UnitCard : Panel
     public Unit Unit => _unit;
     public event Action<Unit, bool>? Clicked;
 
-    public UnitCard(Unit unit)
+    public UnitCard(Unit unit, BattleState state)
     {
         _unit = unit;
+        _state = state;
         CustomMinimumSize = new Vector2(CardWidth, CardHeight);
     }
 
@@ -58,17 +69,24 @@ public sealed partial class UnitCard : Panel
         };
         AddChild(stripe);
 
-        _name = MakeLabel(_unit.Type.Name, new Vector2(9, 3), 11, Colors.White);
-        _count = MakeLabel("", new Vector2(9, 19), 11, new Color(0.78f, 0.78f, 0.78f));
+        _name = MakeLabel(_unit.Type.Name, new Vector2(9, 2), 11, Colors.White);
+        _count = MakeLabel("", new Vector2(9, 17), 10, new Color(0.78f, 0.78f, 0.78f));
 
-        AddChild(Track(new Vector2(9, 38), new Color(0.12f, 0.12f, 0.12f)));
-        _strengthBar = Bar(new Vector2(9, 38), new Color(0.45f, 0.72f, 0.40f));
+        // Right-aligned against the count, so the two read as one line without either
+        // being truncated when a name like "General's Bodyguard" is long.
+        _formation = MakeLabel("", new Vector2(9, 17), 10, new Color(0.72f, 0.70f, 0.60f));
+        _formation.HorizontalAlignment = HorizontalAlignment.Right;
 
-        AddChild(Track(new Vector2(9, 48), new Color(0.12f, 0.12f, 0.12f)));
-        _moraleBar = Bar(new Vector2(9, 48), SimBridge.MoraleColour(MoraleState.Steady));
+        _status = MakeLabel("", new Vector2(9, 31), 10, Colors.White);
 
-        AddChild(Track(new Vector2(9, 58), new Color(0.12f, 0.12f, 0.12f)));
-        _fatigueBar = Bar(new Vector2(9, 58), new Color(0.70f, 0.52f, 0.30f));
+        AddChild(Track(new Vector2(9, 50), new Color(0.12f, 0.12f, 0.12f)));
+        _strengthBar = Bar(new Vector2(9, 50), new Color(0.45f, 0.72f, 0.40f));
+
+        AddChild(Track(new Vector2(9, 61), new Color(0.12f, 0.12f, 0.12f)));
+        _moraleBar = Bar(new Vector2(9, 61), SimBridge.MoraleColour(MoraleState.Steady));
+
+        AddChild(Track(new Vector2(9, 72), new Color(0.12f, 0.12f, 0.12f)));
+        _fatigueBar = Bar(new Vector2(9, 72), new Color(0.70f, 0.52f, 0.30f));
     }
 
     private Label MakeLabel(string text, Vector2 at, int size, Color colour)
@@ -115,6 +133,12 @@ public sealed partial class UnitCard : Panel
             ? "fled the field"
             : $"{_unit.Alive} / {_unit.Strength}";
 
+        _formation.Text = _unit.IsOutOfAction ? "" : FormationName(_unit.Formation);
+
+        (string text, Color colour) = Status();
+        _status.Text = text;
+        _status.AddThemeColorOverride("font_color", colour);
+
         _strengthBar.Size = new Vector2(width * _unit.StrengthFraction.ToFloat(), 7);
 
         float morale = Mathf.Clamp(_unit.Morale.ToFloat() / 100f, 0, 1);
@@ -125,6 +149,96 @@ public sealed partial class UnitCard : Panel
 
         _highlight.Color = new Color(1f, 0.94f, 0.55f, selected ? 1f : 0f);
         Modulate = _unit.IsOutOfAction ? new Color(1, 1, 1, 0.35f) : Colors.White;
+    }
+
+    private static string FormationName(FormationType formation) => formation switch
+    {
+        FormationType.Line => "line",
+        FormationType.Column => "column",
+        FormationType.Wedge => "wedge",
+        FormationType.Square => "square",
+        FormationType.Testudo => "testudo",
+        FormationType.Phalanx => "phalanx",
+        FormationType.Skirmish => "loose",
+        _ => "",
+    };
+
+    /// <summary>
+    /// One line saying what these men are doing right now.
+    ///
+    /// Ordered by what would make a commander look: routing beats everything, then being
+    /// in contact, then whatever they were told to do. Ammunition displaces the order when
+    /// it is nearly gone, because missile troops out of shot are a different unit from the
+    /// one you deployed and the moment that happens is the moment you need to know.
+    /// </summary>
+    private (string, Color) Status()
+    {
+        var quiet = new Color(0.62f, 0.62f, 0.62f);
+
+        if (_unit.Withdrawn) return ("", quiet);
+        if (_unit.IsDestroyed) return ("destroyed", new Color(0.55f, 0.30f, 0.30f));
+
+        switch (_unit.MoraleState)
+        {
+            case MoraleState.Routing:
+                return ("ROUTING", SimBridge.MoraleColour(MoraleState.Routing));
+            case MoraleState.Rallying:
+                return ("rallying", SimBridge.MoraleColour(MoraleState.Rallying));
+        }
+
+        bool shaken = _unit.MoraleState == MoraleState.Wavering;
+        Color mood = shaken
+            ? SimBridge.MoraleColour(MoraleState.Wavering)
+            : new Color(0.82f, 0.82f, 0.78f);
+
+        if (_unit.InContact)
+            return (shaken ? "fighting — shaken" : "fighting", mood);
+
+        // Shots per man, not the unit total: what a commander needs to know is how many
+        // more volleys are left, and that is the same number whether eighty men or eight
+        // are throwing.
+        //
+        // The warning is a fraction of what they set out with, not a flat count. A legion
+        // carries two pila and an archer carries thirty, so a fixed threshold would either
+        // never fire for the archer or leave every hastatus in the army announcing "2
+        // shots left" from the moment of deployment — a permanent warning, which is no
+        // warning.
+        if (_unit.Type.HasMissiles)
+        {
+            int shots = ShotsPerMan();
+            int carried = _unit.Type.Ammunition;
+
+            if (shots == 0) return ("out of ammunition", new Color(0.85f, 0.55f, 0.25f));
+            if (shots <= Math.Max(1, carried / 4))
+                return ($"{shots} shot{(shots == 1 ? "" : "s")} left", new Color(0.88f, 0.75f, 0.35f));
+        }
+
+        string doing = _unit.Order.Type switch
+        {
+            OrderType.Attack => _unit.Order.Run ? "charging" : "closing",
+            OrderType.MoveTo => _unit.Order.Run ? "running" : "advancing",
+            OrderType.Withdraw => "falling back",
+            _ => shaken ? "shaken" : "holding",
+        };
+
+        if (!_unit.FireAtWill && _unit.Type.HasMissiles) doing += " — hold fire";
+
+        return (doing, mood);
+    }
+
+    private int ShotsPerMan()
+    {
+        int total = 0;
+        int living = 0;
+
+        for (int s = _unit.FirstSoldier; s < _unit.EndSoldier; s++)
+        {
+            if (_state.State[s] == SoldierState.Dead) continue;
+            total += _state.Ammo[s];
+            living++;
+        }
+
+        return living == 0 ? 0 : total / living;
     }
 
     public override void _GuiInput(InputEvent @event)
@@ -308,7 +422,7 @@ public sealed partial class Hud : CanvasLayer
 
         foreach (int unitId in state.Armies[playerArmy].UnitIds)
         {
-            var card = new UnitCard(state.Units[unitId]);
+            var card = new UnitCard(state.Units[unitId], state);
             card.Clicked += (unit, additive) => UnitCardClicked?.Invoke(unit, additive);
             _cardRow.AddChild(card);
             _cards.Add(card);
@@ -327,7 +441,7 @@ public sealed partial class Hud : CanvasLayer
         root.AddChild(Map);
 
         _hint = Heading(
-            "LMB drag select  •  RMB move  •  RMB drag set facing  •  WASD/edge pan  •  wheel zoom  •  MMB orbit  •  Space pause",
+            "LMB select  •  RMB move, drag to set facing  •  F formation  •  R run  •  T hold fire  •  [ ] width  •  Space pause",
             11);
         _hint.AnchorTop = 1;
         _hint.AnchorBottom = 1;
