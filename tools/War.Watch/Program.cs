@@ -100,9 +100,25 @@ public static class Program
 
         static bool IsLine(Unit u) => u.Type.Class is UnitClass.Infantry or UnitClass.Spear or UnitClass.Pike;
 
+        // How long each unit spent in each formation.
+        //
+        // Worth its few lines. When the commander was first taught to change formation it
+        // took Rome from eight wins in fourteen to one, and three blind five-minute sweeps
+        // failed to say which of the five new rules was responsible. A census answers it
+        // from a single battle: the formation a unit is standing in for most of the fight
+        // is the one deciding the fight.
+        var census = new Dictionary<(int, FormationType), int>();
+
         while (!sim.IsOver && sim.State.Tick < SimConstants.TickRate * 60 * 40)
         {
             sim.Tick();
+
+            foreach (Unit unit in sim.State.Units)
+            {
+                if (unit.IsOutOfAction) continue;
+                var key = (unit.Id, unit.Formation);
+                census[key] = census.GetValueOrDefault(key) + 1;
+            }
 
             if (firstShot < 0 && sim.State.MissileCount > 0) firstShot = sim.State.Tick;
             if (firstContact < 0 && sim.State.Units.Any(u => u.InContact)) firstContact = sim.State.Tick;
@@ -134,6 +150,22 @@ public static class Program
         foreach (string line in log) Console.WriteLine(line);
         Console.WriteLine();
 
+        Console.WriteLine("  time in formation");
+        foreach (Unit unit in sim.State.Units)
+        {
+            var spent = census
+                .Where(entry => entry.Key.Item1 == unit.Id && entry.Value > SimConstants.TickRate)
+                .OrderByDescending(entry => entry.Value)
+                .Select(entry => $"{entry.Key.Item2.ToString().ToLowerInvariant()} " +
+                                 $"{entry.Value / SimConstants.TickRate}s")
+                .ToList();
+
+            if (spent.Count == 0) continue;
+            Console.WriteLine($"    {sim.State.Armies[unit.ArmyId].Name,-9} {unit.Type.Name,-22} " +
+                              string.Join("  ", spent));
+        }
+        Console.WriteLine();
+
         Summary(sim.State, renderer);
         Console.WriteLine($"  simulated {sim.State.Tick} ticks in {clock.Elapsed.TotalSeconds:F2}s " +
                           $"({sim.State.Tick / clock.Elapsed.TotalSeconds:F0} ticks/sec, " +
@@ -146,6 +178,18 @@ public static class Program
         var wins = new int[2];
         int draws = 0;
         double totalMinutes = 0;
+
+        // Surviving fraction per side, averaged over the sweep.
+        //
+        // Who won is one bit per battle, and one bit is a terrible instrument: fourteen
+        // battles put an error bar of roughly plus or minus seventeen points on the win
+        // rate, which is wider than most balance changes are. Six sweeps were spent
+        // reading noise as signal on this metric alone.
+        //
+        // How much of each army was left standing is continuous, moves smoothly with the
+        // thing being tuned, and separates "narrowly, on the last unit" from "swept from
+        // the field" — which the win column cannot do at any sample size.
+        var survivingFraction = new double[2];
 
         BattleSim probe = Build(options.Seed, options.Swap);
         string firstName = probe.State.Armies[0].Name;
@@ -171,9 +215,21 @@ public static class Program
 
             string winner = sim.State.Victor >= 0 ? sim.State.Armies[sim.State.Victor].Name : "draw";
             int survivors = 0;
+            var standing = new int[2];
+            var fielded = new int[2];
+
             foreach (Army army in sim.State.Armies)
                 foreach (int unitId in army.UnitIds)
-                    if (sim.State.Units[unitId].IsEffective) survivors += sim.State.Units[unitId].Alive;
+                {
+                    Unit unit = sim.State.Units[unitId];
+                    fielded[army.Id] += unit.Strength;
+                    if (!unit.IsEffective) continue;
+                    survivors += unit.Alive;
+                    standing[army.Id] += unit.Alive;
+                }
+
+            for (int side = 0; side < 2; side++)
+                survivingFraction[side] += fielded[side] == 0 ? 0 : standing[side] / (double)fielded[side];
 
             Console.WriteLine($"  seed {options.Seed + i,-6} {winner,-10} {minutes,5:F1} min   " +
                               $"{survivors,5} still standing");
@@ -182,6 +238,9 @@ public static class Program
         clock.Stop();
         Console.WriteLine();
         Console.WriteLine($"  {firstName} {wins[0]}   {secondName} {wins[1]}   draws {draws}");
+        Console.WriteLine($"  still standing at the end: {firstName} " +
+                          $"{survivingFraction[0] / options.Sweep * 100:F1}%   {secondName} " +
+                          $"{survivingFraction[1] / options.Sweep * 100:F1}%");
         Console.WriteLine($"  average battle {totalMinutes / options.Sweep:F1} minutes, " +
                           $"swept in {clock.Elapsed.TotalSeconds:F1}s");
         return 0;
@@ -266,39 +325,8 @@ public static class Program
             CentralRidge = true,
         });
 
-        var rome = new ArmyBlueprint
-        {
-            Faction = Faction.Rome,
-            Name = "Rome",
-            Units =
-            [
-                new UnitBlueprint { TypeId = "rome_velites" },
-                new UnitBlueprint { TypeId = "rome_hastati" },
-                new UnitBlueprint { TypeId = "rome_hastati" },
-                new UnitBlueprint { TypeId = "rome_principes" },
-                new UnitBlueprint { TypeId = "rome_principes" },
-                new UnitBlueprint { TypeId = "rome_triarii" },
-                new UnitBlueprint { TypeId = "rome_equites" },
-                new UnitBlueprint { TypeId = "rome_general" },
-            ],
-        };
-
-        var carthage = new ArmyBlueprint
-        {
-            Faction = Faction.Carthage,
-            Name = "Carthage",
-            Units =
-            [
-                new UnitBlueprint { TypeId = "carthage_balearic_slingers" },
-                new UnitBlueprint { TypeId = "carthage_libyan_spearmen" },
-                new UnitBlueprint { TypeId = "carthage_libyan_spearmen" },
-                new UnitBlueprint { TypeId = "carthage_sacred_band" },
-                new UnitBlueprint { TypeId = "carthage_iberian" },
-                new UnitBlueprint { TypeId = "carthage_elephants" },
-                new UnitBlueprint { TypeId = "carthage_sacred_band_cavalry" },
-                new UnitBlueprint { TypeId = "carthage_general" },
-            ],
-        };
+        ArmyBlueprint rome = Matchups.Rome();
+        ArmyBlueprint carthage = Matchups.Carthage();
 
         // Swapping which army is listed first is how you tell a roster imbalance from a
         // positional one. Soldier ids are allocated army by army and every loop walks

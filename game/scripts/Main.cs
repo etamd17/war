@@ -177,42 +177,7 @@ public sealed partial class Main : Node3D
             Seed = seed,
             Separation = Fix.FromInt(380),
             DeploymentPhase = true,
-            Armies =
-            [
-                new ArmyBlueprint
-                {
-                    Faction = Faction.Rome,
-                    Name = "Rome",
-                    IsPlayer = true,
-                    Units =
-                    [
-                        new UnitBlueprint { TypeId = "rome_velites" },
-                        new UnitBlueprint { TypeId = "rome_hastati" },
-                        new UnitBlueprint { TypeId = "rome_hastati" },
-                        new UnitBlueprint { TypeId = "rome_principes" },
-                        new UnitBlueprint { TypeId = "rome_principes" },
-                        new UnitBlueprint { TypeId = "rome_triarii" },
-                        new UnitBlueprint { TypeId = "rome_equites" },
-                        new UnitBlueprint { TypeId = "rome_general" },
-                    ],
-                },
-                new ArmyBlueprint
-                {
-                    Faction = Faction.Carthage,
-                    Name = "Carthage",
-                    Units =
-                    [
-                        new UnitBlueprint { TypeId = "carthage_balearic_slingers" },
-                        new UnitBlueprint { TypeId = "carthage_libyan_spearmen" },
-                        new UnitBlueprint { TypeId = "carthage_libyan_spearmen" },
-                        new UnitBlueprint { TypeId = "carthage_sacred_band" },
-                        new UnitBlueprint { TypeId = "carthage_iberian" },
-                        new UnitBlueprint { TypeId = "carthage_elephants" },
-                        new UnitBlueprint { TypeId = "carthage_sacred_band_cavalry" },
-                        new UnitBlueprint { TypeId = "carthage_general" },
-                    ],
-                },
-            ],
+            Armies = [Matchups.Rome(isPlayer: true), Matchups.Carthage()],
         });
     }
 

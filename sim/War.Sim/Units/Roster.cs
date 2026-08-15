@@ -196,7 +196,14 @@ public static class Roster
             Morale = 11, Discipline = 8,
             WalkSpeed = Fix.Ratio(12, 10), RunSpeed = Fix.Ratio(3, 1),
             AttackInterval = Fix.Ratio(13, 10),
-            AllowedFormations = FormationMask.Hoplite,
+            // A shielded close-order spear line, not a pike block. The Sacred Band is the
+            // phalanx in this army and says so; these men are the shield wall in front of
+            // it, and square is their answer to being ridden at. They carried Hoplite
+            // until the commander learned to use formations, at which point Carthage put
+            // three levelled phalanxes in the line against Rome's one and won thirteen of
+            // fourteen — and fourteen of fourteen with the armies swapped, which is how
+            // you know it was the roster and not the ground.
+            AllowedFormations = FormationMask.Standard,
             Cost = 440,
         });
 
