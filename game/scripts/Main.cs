@@ -28,6 +28,7 @@ public sealed partial class Main : Node3D
     private BattleSim _sim = null!;
     private TerrainView _terrain = null!;
     private ArmyView _armies = null!;
+    private MissileView _missiles = null!;
     private RtsCamera _camera = null!;
     private Hud _hud = null!;
 
@@ -49,6 +50,7 @@ public sealed partial class Main : Node3D
     private int _shotFrame = 240;
     private bool _beginImmediately;
     private int _shotAtMissiles;
+    private int _settleFrames;
 
     public override void _Ready()
     {
@@ -109,7 +111,10 @@ public sealed partial class Main : Node3D
                 string[] parts = argument["--look=".Length..].Split(',');
                 if (parts.Length == 2 &&
                     float.TryParse(parts[0], out float lx) && float.TryParse(parts[1], out float lz))
+                {
                     _camera.LookAtGround(new Vector3(lx, 0, lz));
+                    _camera.Frozen = true;
+                }
             }
         }
     }
@@ -124,7 +129,17 @@ public sealed partial class Main : Node3D
             ? _sim.State.MissileCount >= _shotAtMissiles
             : _frames >= _shotFrame;
 
-        if (!ready) return;
+        if (!ready && _settleFrames == 0) return;
+
+        // Let the requested moment actually get drawn before photographing it.
+        //
+        // GetViewport().GetTexture() returns the frame that has ALREADY been rendered —
+        // not the one this _Process call is preparing. Trigger on the first frame missiles
+        // exist and the photograph comes back showing the instant before they appeared, so
+        // a renderer that works perfectly looks stone dead. Cost me two sessions of
+        // hunting a rendering bug that was a capture bug; the darts had been in the air
+        // the whole time.
+        if (++_settleFrames < 4) return;
 
         Image image = GetViewport().GetTexture().GetImage();
         Error error = image.SavePng(_shotPath);
@@ -133,7 +148,6 @@ public sealed partial class Main : Node3D
             ? $"WAR — wrote {_shotPath} at tick {_sim.State.Tick}"
             : $"WAR — screenshot failed: {error}");
 
-        GD.Print($"WAR — {_sim.State.MissileCount} missiles in flight");
         GD.Print($"WAR — render: {Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame)} draw calls, " +
                  $"{Performance.GetMonitor(Performance.Monitor.RenderTotalPrimitivesInFrame):N0} primitives, " +
                  $"{Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame)} objects");
@@ -211,6 +225,10 @@ public sealed partial class Main : Node3D
         _armies = new ArmyView { Name = "Armies" };
         AddChild(_armies);
         _armies.Build(_sim.State, _terrain);
+
+        _missiles = new MissileView { Name = "Missiles" };
+        AddChild(_missiles);
+        _missiles.Build(_terrain);
 
         Vector2 start = SimBridge.Plane(_sim.State.Armies[PlayerArmy].DeploymentCentre);
         _camera = new RtsCamera { Name = "Camera" };
@@ -326,6 +344,7 @@ public sealed partial class Main : Node3D
 
         float alpha = (float)Mathf.Clamp(_accumulator / StepSeconds, 0, 1);
         _armies.Update(_sim.State, alpha, _selected);
+        _missiles.Update(_sim.State, alpha);
         _hud.Refresh(_selected);
 
         if (_sim.IsOver && !_reported)

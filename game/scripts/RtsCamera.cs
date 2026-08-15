@@ -26,6 +26,17 @@ public sealed partial class RtsCamera : Node3D
     private float _pitchBias;
     private bool _orbiting;
 
+    /// <summary>
+    /// Locks the camera in place. Set by the screenshot harness.
+    ///
+    /// Edge scrolling reads the mouse position, and in an automated window there is no
+    /// mouse — the pointer sits at a corner, which is inside the edge margin, so the
+    /// camera pans away a little on every frame. Aim a verification shot, come back six
+    /// hundred frames later, and it is looking somewhere else entirely. That drift is
+    /// what made a renderer look broken for two sessions.
+    /// </summary>
+    public bool Frozen { get; set; }
+
     public Camera3D Camera => _camera;
 
     /// <summary>Where the camera is looking, on the ground.</summary>
@@ -51,6 +62,12 @@ public sealed partial class RtsCamera : Node3D
 
     public override void _Process(double delta)
     {
+        if (Frozen)
+        {
+            Apply();
+            return;
+        }
+
         float dt = (float)delta;
 
         // Pan speed scales with height, so a click of the key moves you about the same
