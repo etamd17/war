@@ -166,6 +166,16 @@ public sealed class Unit
     /// <summary>The slot layout the men are currently seeking was built for this many living.</summary>
     public int SlotsBuiltFor { get; set; } = -1;
 
+    /// <summary>
+    /// Tick before which the commander will not change this unit's formation again.
+    ///
+    /// Re-forming is not free: the men walk to new slots, cohesion drops, and a unit
+    /// halfway between a line and a square is worse than either. Without a lock, a unit
+    /// sitting on a decision threshold flaps between two formations and spends the battle
+    /// shuffling instead of fighting.
+    /// </summary>
+    public int FormationHoldUntil { get; set; }
+
     /// <summary>Set once the unit has left the field entirely and stops being simulated.</summary>
     public bool Withdrawn { get; set; }
 

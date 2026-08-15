@@ -22,6 +22,19 @@ public static class CommanderAI
     private static readonly Fix EngagementRange = Fix.FromInt(80);
     private static readonly Fix ScreenStandOff = Fix.FromInt(30);
     private static readonly Fix ScreenRetireDistance = Fix.FromInt(55);
+
+    /// <summary>
+    /// How far the enemy must be before skirmishers go forward again.
+    ///
+    /// Well beyond the distance at which they retire, and the gap is the point. With a
+    /// single threshold the screen advanced to its station, was driven in, advanced again
+    /// the moment it cleared, and spent the whole battle walking seventy-five metres back
+    /// and forth. In one battle the Velites finished exhausted — fatigue at its ceiling —
+    /// and fled the field having lost exactly one man to the enemy. They ran themselves
+    /// out of the fight. Between the two thresholds they now stand still and shoot, which
+    /// is what a skirmisher is for.
+    /// </summary>
+    private static readonly Fix ScreenAdvanceDistance = Fix.FromInt(85);
     private static readonly Fix FlankClearance = Fix.FromInt(45);
     private static readonly Fix GeneralStandOff = Fix.FromInt(45);
     private static readonly Fix MauledFraction = Fix.Ratio(28, 100);
@@ -93,6 +106,125 @@ public static class CommanderAI
         CommandScreen(state, screen, enemies, ownCentre, axis);
         CommandHorse(state, horse, enemies, enemyCentre, axis);
         CommandGeneral(state, general, enemies, ownCentre, axis, inCrisis);
+
+        // Last, because what a unit should be standing in depends on what it has just
+        // been told to do.
+        CommandFormations(state, army, enemies);
+    }
+
+    // ------------------------------------------------------------- formations
+
+    /// <summary>Ticks a unit must stand in a formation before the commander may change it again.</summary>
+    private const int ReformLockTicks = 90;
+
+    private static readonly Fix CavalryThreat = Fix.FromInt(55);
+    private static readonly Fix ImminentCharge = Fix.FromInt(30);
+    private static readonly Fix SquareClearance = Fix.FromInt(45);
+
+    /// <summary>
+    /// How far the nearest enemy foot must be before shields go overhead.
+    ///
+    /// Deliberately beyond <see cref="EngagementRange"/>, so a testudo only ever forms on
+    /// the long approach and is back in line well before contact. Set inside engagement
+    /// range instead and the commander marches its legions into a melee at forty-five per
+    /// cent speed in the one formation that delivers no charge at all — which cost Rome
+    /// five battles in fourteen when this was first wired up.
+    /// </summary>
+    private static readonly Fix TestudoClearance = Fix.FromInt(85);
+    private static readonly Fix PhalanxAdopt = Fix.FromInt(60);
+    private static readonly Fix PhalanxDrop = Fix.FromInt(90);
+
+    /// <summary>
+    /// Puts each unit in the formation its situation calls for.
+    ///
+    /// Every one of these formations was already implemented and every one of them was
+    /// dead weight, because the commander fought the entire battle in line — so a player
+    /// never once had to solve a phalanx, and never saw a testudo cross the ground their
+    /// archers were beating. The systems existed; the opponent did not use them.
+    /// </summary>
+    private static void CommandFormations(BattleState state, Army army, List<Unit> enemies)
+    {
+        foreach (int unitId in army.UnitIds)
+        {
+            Unit unit = state.Units[unitId];
+            if (!unit.IsEffective || unit.Alive == 0) continue;
+            if (state.Tick < unit.FormationHoldUntil) continue;
+
+            FormationType want = Preferred(state, unit, enemies);
+            if (want == unit.Formation || !unit.Type.CanUse(want)) continue;
+
+            unit.Formation = want;
+            unit.Width = 0;                 // let the new formation choose its own depth
+            unit.SlotsBuiltFor = -1;        // and re-form the men into it
+            unit.FormationHoldUntil = state.Tick + ReformLockTicks;
+        }
+    }
+
+    private static FormationType Preferred(BattleState state, Unit unit, List<Unit> enemies)
+    {
+        // Horse: wedge to deliver a charge, line to travel. The wedge is worth forty per
+        // cent on the impact and nothing at all once the melee has settled.
+        if (unit.Type.IsMounted)
+            return unit.Order.Type == OrderType.Attack && !unit.InContact
+                ? FormationType.Wedge
+                : FormationType.Line;
+
+        // Skirmishers live in loose order. It halves what archery does to them, they move
+        // faster, and the melee penalty costs nothing because they were never going to win
+        // a melee anyway.
+        if (unit.Type.Class == UnitClass.Missile) return FormationType.Skirmish;
+
+        Fix nearestFoot = Fix.MaxValue;
+        Fix nearestHorse = Fix.MaxValue;
+        bool underArchery = false;
+
+        foreach (Unit enemy in enemies)
+        {
+            Fix distance = FixVec2.Distance(unit.Centre, enemy.Centre);
+
+            if (enemy.Type.IsMounted)
+                nearestHorse = FixMath.Min(nearestHorse, distance);
+            else if (enemy.Type.Class != UnitClass.Missile)
+                nearestFoot = FixMath.Min(nearestFoot, distance);
+
+            if (enemy.Type.HasMissiles && distance <= enemy.Type.MissileRange && enemy.Ammo(state) > 0)
+                underArchery = true;
+        }
+
+        // A unit that has been told to go and fight something should go and fight it. The
+        // defensive formations below are for troops who are receiving rather than
+        // delivering, and handing one to a unit mid-advance halves its speed and throws
+        // away its charge for a threat it was already moving away from.
+        bool closing = unit.Order.Type == OrderType.Attack && !unit.InContact;
+
+        // Horse closing with no infantry fight to hold the front: face outward. A square
+        // moves at six tenths speed and takes a quarter more from archery, which is the
+        // price of having no flank to find. Troops already committed to an attack only
+        // break off for horse that is genuinely about to arrive.
+        Fix horseThreat = closing ? ImminentCharge : CavalryThreat;
+
+        if (!unit.InContact && nearestHorse < horseThreat && nearestFoot > SquareClearance)
+            return FormationType.Square;
+
+        // Pikes come down once something is close enough for them to matter, and go back
+        // up to march, because a phalanx crosses ground at half speed. The two thresholds
+        // differ so a unit hovering at the edge does not raise and level them repeatedly.
+        if (unit.Type.CanUse(FormationType.Phalanx))
+        {
+            Fix threshold = unit.Formation == FormationType.Phalanx ? PhalanxDrop : PhalanxAdopt;
+            return unit.InContact || nearestFoot < threshold
+                ? FormationType.Phalanx
+                : FormationType.Line;
+        }
+
+        // Shields overhead to cross beaten ground — but only while there is nothing to
+        // fight. A testudo delivers no charge at all and is poor in a melee, so walking
+        // one into contact trades an arrow problem for a worse one.
+        if (unit.Type.CanUse(FormationType.Testudo) &&
+            underArchery && !unit.InContact && nearestFoot > TestudoClearance)
+            return FormationType.Testudo;
+
+        return FormationType.Line;
     }
 
     // -------------------------------------------------------------------- line
@@ -140,7 +272,8 @@ public static class CommanderAI
                 continue;
             }
 
-            Unit? target = NearestEnemy(unit, enemies);
+            Unit? target = BestLineTarget(unit, enemies);
+
             if (target == null)
             {
                 unit.Order = UnitOrder.Hold();
@@ -161,6 +294,63 @@ public static class CommanderAI
                 unit.Order = UnitOrder.MoveTo(approach, axis);
             }
         }
+    }
+
+    /// <summary>
+    /// What a body of foot should walk at.
+    ///
+    /// Nearest, mostly — but not the front of a levelled phalanx, which is the one place
+    /// on the field where walking forward is simply losing. Pikes there add two to attack,
+    /// six to defence, reach a rank early and cancel the charge outright; the same men
+    /// from the side are worth minus six and cannot turn, because a phalanx moves at half
+    /// speed.
+    ///
+    /// The commander was feeding its line into that wall frontally, one unit at a time.
+    /// Teaching it to go and find something else is what makes the phalanx a problem to be
+    /// solved rather than a stat block that wins, and it is the same lesson the player has
+    /// to learn from the other side of the field.
+    /// </summary>
+    private static Unit? BestLineTarget(Unit unit, List<Unit> enemies)
+    {
+        Unit? best = null;
+        Fix bestScore = Fix.MinValue;
+
+        foreach (Unit enemy in enemies)
+        {
+            Fix score = -FixVec2.Distance(unit.Centre, enemy.Centre);
+
+            // Stick with the target already chosen unless something is clearly better.
+            //
+            // Without this the commander re-scores everything twice a second and walks its
+            // line wherever the arithmetic points that instant. It cost Rome an entire
+            // battle: five hundred men lost against fifty-four, every unit routing at
+            // nine tenths strength with fatigue at the ceiling and almost no fighting on
+            // the field at all. The army had marched itself to death chasing a target
+            // that changed every half second. Men who are walking are not fighting, and
+            // in this simulation they are also losing their nerve.
+            if (unit.Order.Type == OrderType.Attack && unit.Order.TargetUnit == enemy.Id)
+                score += Fix.FromInt(60);
+
+            // Pile onto something already fighting: it cannot turn to receive us, and two
+            // units on one is how a line gets broken rather than ground down.
+            if (enemy.InContact) score += Fix.FromInt(35);
+
+            if (enemy.MoraleState == MoraleState.Routing) score -= Fix.FromInt(40);
+
+            if (enemy.FormationProfile.NegatesFrontalCharge && !enemy.InContact)
+            {
+                // Only the front is a wall. Coming in from behind the pikes is exactly
+                // what should be encouraged.
+                bool wouldHitTheFront = FixVec2.Dot(unit.Centre - enemy.Centre, enemy.Facing) > Fix.Zero;
+                if (wouldHitTheFront) score -= Fix.FromInt(130);
+            }
+
+            if (score <= bestScore) continue;
+            bestScore = score;
+            best = enemy;
+        }
+
+        return best;
     }
 
     // ------------------------------------------------------------------ screen
@@ -190,6 +380,14 @@ public static class CommanderAI
                 // Fall back behind the line. Out of ammunition they are no use forward
                 // and will only get ridden down.
                 unit.Order = UnitOrder.Withdraw(ownCentre - axis * Fix.FromInt(45));
+                continue;
+            }
+
+            // Inside the band between the two thresholds: stand and shoot. Nothing is
+            // gained by closing, and the walking is what kills them.
+            if (distance < ScreenAdvanceDistance)
+            {
+                unit.Order = UnitOrder.Hold();
                 continue;
             }
 
@@ -330,6 +528,11 @@ public static class CommanderAI
 
             // Pinned troops cannot turn to receive us.
             if (enemy.InContact) score += Fix.FromInt(40);
+
+            // A levelled phalanx is the best target on the field for horse, provided the
+            // horse arrives anywhere but the front: minus six on the flank, half speed to
+            // turn, and every pike pointing the wrong way.
+            if (enemy.FormationProfile.NegatesFrontalCharge) score += Fix.FromInt(55);
 
             // Broken troops are free.
             if (enemy.MoraleState == MoraleState.Routing) score += Fix.FromInt(35);
