@@ -14,6 +14,7 @@ namespace War.Watch;
 ///   dotnet run --project tools/War.Watch -- --seed 77    a different battle
 ///   dotnet run --project tools/War.Watch -- --fast       resolve it and print the result
 ///   dotnet run --project tools/War.Watch -- --sweep 25   run 25 battles and tally the outcomes
+///   dotnet run --project tools/War.Watch -- --campaign 60  run 60 turns of the campaign
 ///
 /// The sweep is the one that earns its keep. Ancient battles turn on morale, which is
 /// noisy by design, so a single result tells you very little about whether a change
@@ -27,6 +28,8 @@ public static class Program
 
         Console.OutputEncoding = Encoding.UTF8;
 
+        if (options.Calibrate > 0) return CalibrationView.Run(options.Seed, options.Calibrate);
+        if (options.Campaign > 0) return CampaignView.Run(options.Seed, options.Campaign, options.Colour);
         if (options.Sweep > 0) return Sweep(options);
         return options.Fast ? Resolve(options) : Watch(options);
     }
@@ -354,6 +357,8 @@ public static class Program
         public int Sweep { get; private set; }
         public bool Colour { get; private set; } = true;
         public bool Swap { get; private set; }
+        public int Campaign { get; private set; }
+        public int Calibrate { get; private set; }
 
         public static Options Parse(string[] args)
         {
@@ -371,6 +376,12 @@ public static class Program
                         break;
                     case "--sweep" when i + 1 < args.Length:
                         options.Sweep = int.Parse(args[++i]);
+                        break;
+                    case "--campaign" when i + 1 < args.Length:
+                        options.Campaign = int.Parse(args[++i]);
+                        break;
+                    case "--calibrate" when i + 1 < args.Length:
+                        options.Calibrate = int.Parse(args[++i]);
                         break;
                     case "--width" when i + 1 < args.Length:
                         options.Width = int.Parse(args[++i]);

@@ -20,6 +20,10 @@ public enum RngStream : uint
     Ai = 7,
     Terrain = 8,
     Cosmetic = 9,
+
+    /// <summary>Campaign-layer streams. Separate, so a battle never perturbs the map.</summary>
+    Campaign = 10,
+    CampaignBattle = 11,
 }
 
 /// <summary>
