@@ -23,7 +23,30 @@ namespace War.Game;
 /// </summary>
 public sealed partial class Main : Node3D
 {
-    private const int PlayerArmy = 0;
+    /// <summary>
+    /// Which army the player commands.
+    ///
+    /// Read from the setup rather than assumed to be army zero. A standalone skirmish
+    /// always puts the player first, so this was a constant for a long time and was
+    /// perfectly correct — right up until the campaign started handing battles in, where
+    /// the attacker is army zero and the player is often the one being attacked. The
+    /// symptom was a Roman player looking at a card row full of Spartan Hoplites, unable
+    /// to select any of his own men and able to select all of the enemy's.
+    /// </summary>
+    private int PlayerArmy =>
+        _sim.State.Armies[1].IsPlayer ? 1 : 0;
+
+    /// <summary>
+    /// A battle handed in from outside, instead of the fixed skirmish below.
+    ///
+    /// Set before the node enters the tree. This is how the campaign fights: it builds the
+    /// setup from two armies standing in a province and hands it over, rather than the
+    /// battle scene knowing anything at all about provinces.
+    /// </summary>
+    public BattleSetup? ExternalSetup { get; set; }
+
+    /// <summary>Raised once, when the battle is decided. The state is still readable.</summary>
+    public event Action<BattleState>? Finished;
 
     private BattleSim _sim = null!;
     private TerrainView _terrain = null!;
@@ -159,8 +182,13 @@ public sealed partial class Main : Node3D
 
     private void BuildBattle()
     {
-        // A fixed seed for now. The campaign layer will supply real army lists and a
-        // battlefield chosen from the province the fight happens in.
+        if (ExternalSetup is { } supplied)
+        {
+            _sim = BattleSim.Create(supplied);
+            return;
+        }
+
+        // The standalone skirmish, for running the battle scene on its own.
         const uint seed = 4471;
 
         Terrain terrain = TerrainGenerator.Generate(new BattlefieldSettings
@@ -320,6 +348,8 @@ public sealed partial class Main : Node3D
                 ? _sim.State.Armies[_sim.State.Victor].Name
                 : "nobody";
             GD.Print($"WAR — {victor} holds the field after {seconds / 60:D2}:{seconds % 60:D2}");
+
+            Finished?.Invoke(_sim.State);
         }
 
         CaptureIfAsked();

@@ -4,6 +4,15 @@ using War.Sim.Units;
 namespace War.Sim.Campaign;
 
 /// <summary>
+/// Two armies that movement has put in the same province, before anyone has fought.
+///
+/// Exists so a turn can be stopped halfway. The battle the player is standing in wants to
+/// be handed to the tactical engine and fought over the next several minutes in a window,
+/// which a turn that resolves everything in one call cannot allow.
+/// </summary>
+public sealed record PendingBattle(CampaignArmy Attacker, CampaignArmy Defender, Province Province);
+
+/// <summary>
 /// The campaign turn.
 ///
 /// One method does the work and the order inside it is the design. Movement resolves
@@ -24,7 +33,35 @@ public static class CampaignSim
     /// <summary>Fraction of a unit's cost paid every turn to keep it in the field, as a divisor.</summary>
     private const int UpkeepDivisor = 14;
 
+    /// <summary>
+    /// The whole turn, with every battle estimated.
+    ///
+    /// This is what a campaign nobody is watching does. A campaign somebody IS watching
+    /// calls the three phases below instead, so that the one battle the player is standing
+    /// in can be handed to the tactical engine and fought properly while the rest of the
+    /// world resolves around it.
+    /// </summary>
     public static void EndTurn(CampaignState state)
+    {
+        foreach (PendingBattle battle in BeginTurn(state))
+        {
+            if (battle.Attacker.IsDestroyed || battle.Defender.IsDestroyed) continue;
+
+            DetRandom random = state.Random(RngStream.CampaignBattle, battle.Province.Id);
+            Settle(state, battle, BattleResolver.Estimate(
+                battle.Attacker, battle.Defender, battle.Province.Landscape, random));
+        }
+
+        CompleteTurn(state);
+    }
+
+    /// <summary>
+    /// Orders, movement, and the list of fights that movement has caused.
+    ///
+    /// Stops before resolving any of them, because the caller may want to fight one of them
+    /// in a window over the next several minutes.
+    /// </summary>
+    public static List<PendingBattle> BeginTurn(CampaignState state)
     {
         foreach (CampaignPower power in state.Powers.Values)
         {
@@ -34,7 +71,13 @@ public static class CampaignSim
 
         ResolveMovement(state);
         MergeStacks(state);
-        ResolveBattles(state);
+        return FindBattles(state);
+    }
+
+    /// <summary>Everything after the fighting: sieges, ground taken, money, new troops.</summary>
+    public static void CompleteTurn(CampaignState state)
+    {
+        state.Armies.RemoveAll(a => a.IsDestroyed);
         Besiege(state);
         ResolveOccupation(state);
         CollectRevenue(state);
@@ -104,36 +147,36 @@ public static class CampaignSim
 
     // ----------------------------------------------------------------- battles
 
-    private static void ResolveBattles(CampaignState state)
+    private static List<PendingBattle> FindBattles(CampaignState state)
     {
+        var battles = new List<PendingBattle>();
+
         foreach (Province province in state.Provinces)
         {
             var present = state.ArmiesIn(province.Id).ToList();
             if (present.Count < 2) continue;
 
-            // The province's owner defends it. If none of the armies present owns the
-            // ground — two powers colliding in somebody else's province — the larger one
-            // is treated as holding it, which is the closest thing to arriving first that
-            // a simultaneous turn can offer.
+            // The province owner defends it. If none of the armies present owns the ground
+            // — two powers colliding in somebody else's province — the larger is treated as
+            // holding it, which is the closest thing to arriving first that a simultaneous
+            // turn can offer.
             CampaignArmy defender =
                 present.FirstOrDefault(a => a.Owner == province.Owner)
                 ?? present.OrderByDescending(a => a.Men).First();
 
-            foreach (CampaignArmy attacker in present.Where(a => a.Owner != defender.Owner).ToList())
-            {
-                if (attacker.IsDestroyed || defender.IsDestroyed) break;
-                FightOver(state, province, attacker, defender);
-            }
+            foreach (CampaignArmy attacker in present.Where(a => a.Owner != defender.Owner))
+                battles.Add(new PendingBattle(attacker, defender, province));
         }
 
-        state.Armies.RemoveAll(a => a.IsDestroyed);
+        return battles;
     }
 
-    private static void FightOver(
-        CampaignState state, Province province, CampaignArmy attacker, CampaignArmy defender)
+    /// <summary>Applies a result, however it was arrived at, and pushes the loser out.</summary>
+    public static void Settle(CampaignState state, PendingBattle battle, BattleReport report)
     {
-        DetRandom random = state.Random(RngStream.CampaignBattle, province.Id);
-        BattleReport report = BattleResolver.Estimate(attacker, defender, province.Landscape, random);
+        CampaignArmy attacker = battle.Attacker;
+        CampaignArmy defender = battle.Defender;
+        Province province = battle.Province;
 
         string verdict = report.Outcome switch
         {
@@ -144,7 +187,8 @@ public static class CampaignSim
 
         state.Record(
             $"battle in {province.Name}: {verdict} " +
-            $"({report.AttackerLosses} and {report.DefenderLosses} dead)");
+            $"({report.AttackerLosses} and {report.DefenderLosses} dead)" +
+            (report.FoughtInFull ? ", fought in full" : ""));
 
         // The loser quits the province. Not destroyed — a beaten army that got away is
         // still an army, and letting it retreat is what makes the map move rather than

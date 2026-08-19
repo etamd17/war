@@ -150,6 +150,45 @@ public static class CampaignAI
     }
 
     /// <summary>
+    /// Buys one regiment in a named province, for a power giving its own orders.
+    ///
+    /// Deliberately the same choice the AI would have made. A player pressing the button
+    /// repeatedly gets a balanced army rather than ten regiments of whatever is strongest,
+    /// and there is exactly one definition in the codebase of what an army should look
+    /// like — which is the only way the two stay in step as the roster changes.
+    /// </summary>
+    public static bool RecruitOne(CampaignState state, CampaignPower power, int provinceId)
+    {
+        if (state[provinceId].Owner != power.Faction) return false;
+        if (state.ArmiesIn(provinceId).Any(a => a.Owner != power.Faction)) return false;
+
+        CampaignArmy army = state.ArmiesIn(provinceId).FirstOrDefault(a => a.Owner == power.Faction)
+            ?? Raise(state, power.Faction, provinceId);
+
+        DetRandom random = state.Random(RngStream.Campaign, 900 + army.Regiments.Count);
+
+        UnitType? wanted = NextUnitFor(state, army, power.Faction, random);
+        if (wanted == null || wanted.Cost > power.Treasury) return false;
+
+        power.Treasury -= wanted.Cost;
+        army.Regiments.Add(new Regiment { TypeId = wanted.Id, Strength = wanted.DefaultStrength });
+        return true;
+    }
+
+    private static CampaignArmy Raise(CampaignState state, Faction faction, int provinceId)
+    {
+        var army = new CampaignArmy
+        {
+            Id = state.NextArmyId++,
+            Owner = faction,
+            Province = provinceId,
+        };
+
+        state.Armies.Add(army);
+        return army;
+    }
+
+    /// <summary>
     /// Where new troops appear.
     ///
     /// In a province the power actually holds and nobody is contesting, joining the army
@@ -182,15 +221,7 @@ public static class CampaignAI
 
         if (home == null) return null;
 
-        var raised = new CampaignArmy
-        {
-            Id = state.NextArmyId++,
-            Owner = power.Faction,
-            Province = home.Id,
-        };
-
-        state.Armies.Add(raised);
-        return raised;
+        return Raise(state, power.Faction, home.Id);
     }
 
     /// <summary>
@@ -240,7 +271,7 @@ public static class CampaignAI
         // Buy the best that can be afforded rather than always the cheapest, so a rich
         // power fields a visibly better army than a poor one.
         CampaignPower power = state.Power(faction);
-        var affordable = options.Where(u => u.Cost <= power.Treasury - Reserve).ToList();
+        var affordable = options.Where(u => u.Cost <= power.Treasury).ToList();
         if (affordable.Count == 0) return null;
 
         int ceiling = affordable.Max(u => u.Cost);

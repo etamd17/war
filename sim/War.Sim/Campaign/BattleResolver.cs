@@ -230,29 +230,50 @@ public static class BattleResolver
     public static BattleReport Fight(
         CampaignArmy attacker, CampaignArmy defender, Province province, uint seed)
     {
-        Terrain terrain = TerrainGenerator.Generate(province.Battlefield(seed));
-
-        BattleSetup setup = new()
-        {
-            Terrain = terrain,
-            Seed = seed,
-            Separation = Fix.FromInt(380),
-            Armies =
-            [
-                Blueprint(attacker),
-                Blueprint(defender),
-            ],
-        };
-
-        BattleSim sim = BattleSim.Create(setup);
+        BattleSim sim = BattleSim.Create(Setup(attacker, defender, province, seed));
         sim.Run(SimConstants.Ticks(BattleSim.TimeLimitSeconds));
 
-        int attackerLosses = WriteBack(attacker, sim.State, 0);
-        int defenderLosses = WriteBack(defender, sim.State, 1);
+        return ReadBack(attacker, defender, sim.State);
+    }
 
-        BattleOutcome outcome = sim.State.Result switch
+    /// <summary>
+    /// Builds the tactical battle two campaign armies would fight here.
+    ///
+    /// Public because the game needs it: when the player is one of the two, the battle is
+    /// not resolved in a function call but handed to a window and fought over the next
+    /// several minutes. The attacker is army zero, which is the convention
+    /// <see cref="ReadBack"/> relies on.
+    /// </summary>
+    public static BattleSetup Setup(
+        CampaignArmy attacker, CampaignArmy defender, Province province, uint seed,
+        bool playerIsAttacker = false, bool deployment = false) => new()
+    {
+        Terrain = TerrainGenerator.Generate(province.Battlefield(seed)),
+        Seed = seed,
+        Separation = Fix.FromInt(380),
+        DeploymentPhase = deployment,
+        Armies =
+        [
+            Blueprint(attacker, playerIsAttacker),
+            Blueprint(defender, !playerIsAttacker && deployment),
+        ],
+    };
+
+    /// <summary>
+    /// Reads a finished battle back into the two campaign armies that fought it.
+    ///
+    /// Also public, and for the same reason: a battle fought in a window finishes on some
+    /// later frame, long after whatever started it has returned.
+    /// </summary>
+    public static BattleReport ReadBack(
+        CampaignArmy attacker, CampaignArmy defender, BattleState state)
+    {
+        int attackerLosses = WriteBack(attacker, state, 0);
+        int defenderLosses = WriteBack(defender, state, 1);
+
+        BattleOutcome outcome = state.Result switch
         {
-            BattleResult.ArmyVictory when sim.State.Victor == 0 => BattleOutcome.AttackerWon,
+            BattleResult.ArmyVictory when state.Victor == 0 => BattleOutcome.AttackerWon,
             BattleResult.ArmyVictory => BattleOutcome.DefenderWon,
             _ => BattleOutcome.Stalemate,
         };
@@ -260,10 +281,11 @@ public static class BattleResolver
         return new BattleReport(outcome, attackerLosses, defenderLosses, true);
     }
 
-    private static ArmyBlueprint Blueprint(CampaignArmy army) => new()
+    private static ArmyBlueprint Blueprint(CampaignArmy army, bool isPlayer = false) => new()
     {
         Faction = army.Owner,
         Name = army.Owner.ToString(),
+        IsPlayer = isPlayer,
         Units = army.Regiments
             .Where(r => r.Strength > 0)
             .Select(r => new UnitBlueprint { TypeId = r.TypeId, Strength = r.Strength })
