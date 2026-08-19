@@ -22,7 +22,24 @@ public static class SimConstants
     public static Fix PerSecond(Fix ratePerSecond) => ratePerSecond * TickSeconds;
 
     /// <summary>Converts a duration in seconds into a whole number of ticks.</summary>
-    public static int Ticks(Fix seconds) => (seconds * TickRate).RoundToInt;
+    /// <summary>
+    /// Seconds to ticks, in 64-bit.
+    ///
+    /// The obvious one-liner — multiply the Fix by the tick rate and round — overflows at
+    /// about eighteen minutes of simulated time, because a Q16.16 second is already
+    /// sixty-five thousand raw units and thirty of those per second runs an int out at
+    /// 2^31. Everything in a battle is measured in seconds or fractions of one, so this
+    /// never fired in anger.
+    ///
+    /// It fired the moment the campaign layer asked for the battle time limit, which is
+    /// forty minutes. The count came back negative, Run was handed a negative number of
+    /// ticks and did nothing at all, and every battle came back InProgress — reported as a
+    /// stalemate, because that is what the result mapping does with a battle that has not
+    /// finished. Nineteen campaign battles in twenty resolved as draws and the fault
+    /// looked, from the outside, like a badly written estimate model.
+    /// </summary>
+    public static int Ticks(Fix seconds) =>
+        (int)(((long)seconds.Raw * TickRate + (Fix.OneRaw >> 1)) >> Fix.FractionalBits);
 
     // ------------------------------------------------------------------ spatial
 
