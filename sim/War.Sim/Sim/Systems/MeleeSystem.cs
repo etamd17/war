@@ -272,6 +272,7 @@ public static class MeleeSystem
         offense -= FixMath.Clamp(climb * SimConstants.SlopeCombatFactor, -maxHeight, maxHeight);
 
         offense += Fix.FromInt(attacker.FormationProfile.AttackBonus);
+        offense += attacker.Veterancy;
         offense -= state.Fatigue[attackerSoldier] * SimConstants.MaxFatiguePenalty;
 
         // Men who are losing heart fight worse, which is how a wavering unit spirals.
@@ -286,6 +287,8 @@ public static class MeleeSystem
         defence += Fix.FromInt(fromFront
             ? defender.FormationProfile.FrontDefenceBonus
             : defender.FormationProfile.FlankDefenceBonus);
+
+        defence += defender.Veterancy;
 
         defence -= state.Fatigue[defenderSoldier] * SimConstants.MaxFatiguePenalty;
 

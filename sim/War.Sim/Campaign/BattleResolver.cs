@@ -84,7 +84,10 @@ public static class BattleResolver
         foreach (Regiment regiment in army.Regiments)
         {
             if (regiment.Strength <= 0) continue;
-            total += (long)regiment.Strength * Quality(regiment.Type);
+
+            // Veterancy counts here too, or the fast model would quietly disagree with the
+            // engine about every veteran army on the map.
+            total += (long)regiment.Strength * (Quality(regiment.Type) + regiment.Experience * 2);
         }
 
         // A general on the field is worth more than his bodyguard: the whole line steadies
@@ -183,12 +186,30 @@ public static class BattleResolver
         int winnerLosses = Apply(winner, winnerLoss, random);
         int loserLosses = Apply(loser, loserLoss, random);
 
+        Blood(winner, won: true);
+        Blood(loser, won: false);
+
         int attackerLosses = attackerWon ? winnerLosses : loserLosses;
         int defenderLosses = attackerWon ? loserLosses : winnerLosses;
 
         return new BattleReport(
             attackerWon ? BattleOutcome.AttackerWon : BattleOutcome.DefenderWon,
             attackerLosses, defenderLosses, false);
+    }
+
+    /// <summary>
+    /// Marks every surviving regiment as having been in a battle.
+    ///
+    /// The survivors only. A regiment that was wiped out has already been buried, and men
+    /// who are not there to remember the fight cannot have learned anything from it.
+    /// </summary>
+    private static void Blood(CampaignArmy army, bool won)
+    {
+        foreach (Regiment regiment in army.Regiments)
+        {
+            if (regiment.Strength <= 0) continue;
+            regiment.Blooding += won ? 2 : 1;
+        }
     }
 
     /// <summary>
@@ -278,6 +299,9 @@ public static class BattleResolver
             _ => BattleOutcome.Stalemate,
         };
 
+        Blood(attacker, outcome == BattleOutcome.AttackerWon);
+        Blood(defender, outcome == BattleOutcome.DefenderWon);
+
         return new BattleReport(outcome, attackerLosses, defenderLosses, true);
     }
 
@@ -288,7 +312,12 @@ public static class BattleResolver
         IsPlayer = isPlayer,
         Units = army.Regiments
             .Where(r => r.Strength > 0)
-            .Select(r => new UnitBlueprint { TypeId = r.TypeId, Strength = r.Strength })
+            .Select(r => new UnitBlueprint
+            {
+                TypeId = r.TypeId,
+                Strength = r.Strength,
+                Experience = r.Experience,
+            })
             .ToList(),
     };
 

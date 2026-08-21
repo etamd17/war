@@ -193,7 +193,10 @@ public sealed partial class CampaignHud : CanvasLayer
             if (army.Owner != _player) continue;
 
             foreach (Regiment regiment in army.Regiments)
-                lines.Add($"   {regiment.Type.Name} {regiment.Strength}/{regiment.Establishment}");
+                lines.Add($"   {regiment.Type.Name} {regiment.Strength}/{regiment.Establishment}"
+                    + (regiment.Experience > 0
+                        ? "  " + new string('›', regiment.Experience)
+                        : ""));
         }
 
         return string.Join("\n", lines);

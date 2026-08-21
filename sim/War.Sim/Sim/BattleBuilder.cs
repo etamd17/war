@@ -17,6 +17,9 @@ public sealed class UnitBlueprint
 
     /// <summary>Frontage in files. Zero uses the formation's natural width.</summary>
     public int Width { get; init; }
+
+    /// <summary>Chevrons earned in earlier battles, from the campaign. Zero for a skirmish.</summary>
+    public int Experience { get; init; }
 }
 
 public sealed class ArmyBlueprint
@@ -96,6 +99,7 @@ public static class BattleBuilder
                     Alive = strength,
                     Formation = formation,
                     Width = spec.Width,
+                    Experience = Math.Clamp(spec.Experience, 0, SimConstants.MaxExperience),
                     Morale = Fix.FromInt(100),
                     SkirmishStance = type.Class is UnitClass.Missile or UnitClass.MissileCavalry,
                 };

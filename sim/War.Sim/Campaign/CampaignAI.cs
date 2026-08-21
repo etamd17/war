@@ -24,6 +24,9 @@ public static class CampaignAI
     /// <summary>Regiments in a field army before it stops taking reinforcements.</summary>
     private const int FullArmy = 10;
 
+    /// <summary>Below this fraction of establishment, an army goes home and refits.</summary>
+    private const double RefitBelow = 0.6;
+
     public static void IssueOrders(CampaignState state, CampaignPower power)
     {
         DetRandom random = state.Random(RngStream.Campaign, (int)power.Faction);
@@ -43,6 +46,22 @@ public static class CampaignAI
             // twenty every power still held roughly what it started with, and the log was
             // nothing but "lays siege to" with no province ever falling.
             if (here.Owner != power.Faction && here.Besieger == power.Faction)
+            {
+                army.Destination = null;
+                continue;
+            }
+
+            // Stop and refit rather than march an army into nothing.
+            //
+            // The commander moved every army every turn, so no army was ever standing in a
+            // quiet friendly province at the end of a turn and reinforcement never once
+            // fired. The result after a hundred and twenty turns was an elite that could
+            // not fight: six regiments of Gallic Cavalry at nine chevrons each and between
+            // six and nine men, still marching, because nothing on the map could either
+            // kill them or heal them.
+            if (here.Owner == power.Faction && here.Unrest == 0 &&
+                army.StrengthFraction < RefitBelow &&
+                !state.ArmiesIn(army.Province).Any(a => a.Owner != power.Faction))
             {
                 army.Destination = null;
                 continue;

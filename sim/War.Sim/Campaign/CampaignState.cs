@@ -1,4 +1,5 @@
 using War.Sim.Core;
+using War.Sim.Sim;
 using War.Sim.Units;
 
 namespace War.Sim.Campaign;
@@ -18,12 +19,27 @@ public sealed class Regiment
 
     public UnitType Type => Roster.Get(TypeId);
 
+    /// <summary>
+    /// Battles fought and lived through, counted in points rather than in battles.
+    ///
+    /// Two for a battle won and one for one survived but lost, because there is something
+    /// to be learned from a defeat and rather more from a victory. Chevrons come off this
+    /// at a third the rate, so a regiment reaches its ninth after roughly fourteen battles
+    /// — long enough that a veteran unit is genuinely a thing you built rather than a thing
+    /// you were given.
+    /// </summary>
+    public int Blooding { get; set; }
+
+    /// <summary>Chevrons. What the men are actually worth over and above their type.</summary>
+    public int Experience => Math.Min(SimConstants.MaxExperience, Blooding / 3);
+
     /// <summary>Full-strength establishment, for reporting how badly mauled this is.</summary>
     public int Establishment => Type.DefaultStrength;
 
     public bool IsDestroyed => Strength <= 0;
 
-    public override string ToString() => $"{Type.Name} {Strength}/{Establishment}";
+    public override string ToString() =>
+        $"{Type.Name} {Strength}/{Establishment}" + (Experience > 0 ? $" ({Experience})" : "");
 }
 
 /// <summary>A body of troops standing in a province.</summary>
@@ -51,6 +67,17 @@ public sealed class CampaignArmy
     }
 
     public bool IsDestroyed => Men <= 0;
+
+    /// <summary>How much of its establishment this army still has under arms, 0 to 1.</summary>
+    public double StrengthFraction
+    {
+        get
+        {
+            int establishment = 0;
+            foreach (Regiment regiment in Regiments) establishment += regiment.Establishment;
+            return establishment == 0 ? 0 : Men / (double)establishment;
+        }
+    }
 
     public bool HasGeneral
     {

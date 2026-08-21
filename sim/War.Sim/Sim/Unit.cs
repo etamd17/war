@@ -163,6 +163,19 @@ public sealed class Unit
     /// <summary>Kills scored in the last few seconds, for the "we are winning" morale term.</summary>
     public int RecentKills { get; set; }
 
+    /// <summary>
+    /// Chevrons earned in earlier battles.
+    ///
+    /// Zero in a standalone skirmish and carried in from the campaign otherwise, which is
+    /// the point of it: an army that has been kept alive across a war is measurably better
+    /// than the one bought last turn, and that is the whole reason to withdraw a mauled
+    /// legion rather than spend it.
+    /// </summary>
+    public int Experience { get; init; }
+
+    /// <summary>What that experience is worth in a fight.</summary>
+    public Fix Veterancy => Fix.FromInt(Experience) * SimConstants.ExperiencePerChevron;
+
     /// <summary>The slot layout the men are currently seeking was built for this many living.</summary>
     public int SlotsBuiltFor { get; set; } = -1;
 

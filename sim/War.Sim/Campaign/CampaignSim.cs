@@ -81,6 +81,7 @@ public static class CampaignSim
         Besiege(state);
         ResolveOccupation(state);
         CollectRevenue(state);
+        Reinforce(state);
         Recruit(state);
 
         foreach (Province province in state.Provinces)
@@ -405,6 +406,67 @@ public static class CampaignSim
         }
 
         state.Armies.RemoveAll(a => a.Regiments.Count == 0);
+    }
+
+    // ----------------------------------------------------------- reinforcement
+
+    /// <summary>Men a regiment can absorb in a turn, as a fraction of establishment.</summary>
+    private const int ReinforcementRate = 6;
+
+    /// <summary>
+    /// Brings under-strength regiments back up, in quiet friendly provinces, for money.
+    ///
+    /// Without this a campaign army only ever decays. Veterancy made that visible and
+    /// slightly absurd: after a hundred and twenty turns the most experienced troops on the
+    /// map were six regiments of Gallic Cavalry at nine chevrons apiece and between six and
+    /// nine men each — an elite force that could not have won a skirmish, still marching
+    /// around because nothing in the game could either kill it or heal it.
+    ///
+    /// The draft dilutes what it refills. A regiment of eight veterans brought back up to
+    /// sixty is fifty-two recruits and eight men who remember, and its experience falls to
+    /// match. That is the whole reason a veteran unit is worth protecting rather than
+    /// spending — you cannot buy the chevrons back, and rebuilding is not the same as
+    /// preserving.
+    /// </summary>
+    private static void Reinforce(CampaignState state)
+    {
+        foreach (CampaignArmy army in state.Armies)
+        {
+            Province here = state[army.Province];
+
+            if (here.Owner != army.Owner || here.Unrest > 0) continue;
+            if (state.ArmiesIn(army.Province).Any(a => a.Owner != army.Owner)) continue;
+
+            CampaignPower power = state.Power(army.Owner);
+
+            foreach (Regiment regiment in army.Regiments)
+            {
+                int missing = regiment.Establishment - regiment.Strength;
+                if (missing <= 0) continue;
+
+                int draft = Math.Min(missing, Math.Max(1, regiment.Establishment / ReinforcementRate));
+                int perMan = Math.Max(1, regiment.Type.Cost / regiment.Establishment);
+
+                draft = Math.Min(draft, power.Treasury / perMan);
+                if (draft <= 0) continue;
+
+                power.Treasury -= draft * perMan;
+
+                // Dilution before the men arrive, so the arithmetic is against the veterans
+                // who are actually there rather than against the refilled total.
+                // The equilibrium this produces is worth knowing rather than guessing at.
+                // A front-line regiment that fights, loses a fifth and takes a fifth back
+                // every turn settles at roughly four chevrons: gaining two a battle and
+                // losing about a sixth of its total to the draft. Nine is therefore only
+                // reachable by a regiment that never refits — which is exactly why the
+                // nine-chevron units on a mature map are always small ones, and is the
+                // trade the mechanic is meant to create rather than a fault in it.
+                regiment.Blooding = regiment.Blooding * regiment.Strength
+                                  / (regiment.Strength + draft);
+
+                regiment.Strength += draft;
+            }
+        }
     }
 
     // ------------------------------------------------------------- recruitment

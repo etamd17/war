@@ -41,6 +41,8 @@ public static class CampaignView
         Console.WriteLine();
         Console.WriteLine(Standings(state, colour));
         Console.WriteLine();
+        Console.WriteLine(Veterans(state, colour));
+        Console.WriteLine();
 
         Console.WriteLine("  the last of it");
         foreach (string line in state.Chronicle.Skip(Math.Max(0, lastChronicle - 14)).TakeLast(18))
@@ -126,6 +128,62 @@ public static class CampaignView
             string name = power.Destroyed ? $"{power.Name} (finished)" : power.Name;
             string row = $"  {name,-18}{state.ProvinceCount(power.Faction),6}{armies,9}{men,9}{power.Treasury,11}";
             sb.AppendLine(colour ? Paint(row, power.Faction) : row);
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// The most blooded regiments still in the field.
+    ///
+    /// A campaign is supposed to produce these — a unit that has been kept alive across a
+    /// war and is measurably better for it. If this list is empty at turn a hundred, either
+    /// nobody is fighting or nobody is surviving, and both are worth knowing.
+    /// </summary>
+    private static string Veterans(CampaignState state, bool colour)
+    {
+        // Ranked by chevrons and then by how many men are left, NOT by raw blooding.
+        //
+        // Sorting by blooding looked reasonable and was a trap: refitting a regiment
+        // dilutes its blooding, so the most-blooded list can only ever contain units that
+        // never stopped to refit. It showed nothing but nine-chevron husks at eight men
+        // apiece and made a healthy campaign look like a broken one — the diagnostic was
+        // selecting for the exact pathology it was supposed to detect.
+        var best = state.Armies
+            .SelectMany(a => a.Regiments.Select(r => (Army: a, Regiment: r)))
+            .Where(x => x.Regiment.Experience > 0)
+            .OrderByDescending(x => x.Regiment.Experience)
+            .ThenByDescending(x => x.Regiment.Strength)
+            .ThenBy(x => x.Regiment.TypeId, StringComparer.Ordinal)
+            .Take(6)
+            .ToList();
+
+        var sb = new StringBuilder();
+
+        // The unbiased number: how much of its establishment the whole map still has under
+        // arms. If armies are decaying into husks, this is where it shows.
+        int men = 0, establishment = 0;
+        foreach (CampaignArmy army in state.Armies)
+            foreach (Regiment regiment in army.Regiments)
+            {
+                men += regiment.Strength;
+                establishment += regiment.Establishment;
+            }
+
+        sb.AppendLine($"  armies are at {(establishment == 0 ? 0 : men * 100 / establishment)}% " +
+                      "of establishment");
+        sb.AppendLine();
+
+        if (best.Count == 0) return sb.Append("  no veteran regiments in the field").ToString();
+
+        sb.AppendLine("  veterans");
+
+        foreach ((CampaignArmy army, Regiment regiment) in best)
+        {
+            string row = $"    {army.Owner,-9} {regiment.Type.Name,-24} " +
+                         $"{regiment.Strength,4}/{regiment.Establishment,-4} " +
+                         new string('>', regiment.Experience);
+            sb.AppendLine(colour ? Paint(row, army.Owner) : row);
         }
 
         return sb.ToString().TrimEnd();

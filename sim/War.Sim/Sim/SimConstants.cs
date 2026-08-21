@@ -158,6 +158,28 @@ public static class SimConstants
     /// striking upward, the other man's weight coming down on him. That is the gradient,
     /// and it does not shrink just because the two of them are standing close together.
     /// </summary>
+    /// <summary>
+    /// What one chevron of experience is worth in a fight.
+    ///
+    /// Three chevrons for a point of attack and a point of defence, so a fully veteran
+    /// regiment is worth about three points of each — real, and nothing like enough to
+    /// carry a bad matchup. Veterancy should mean the army you kept alive is better than
+    /// the one you bought last turn, not that it is unbeatable.
+    /// </summary>
+    public static readonly Fix ExperiencePerChevron = Fix.Ratio(1, 3);
+
+    /// <summary>
+    /// And what it is worth to their nerve, on the hundred-point morale scale.
+    ///
+    /// Deliberately the larger effect. Men who have already stood in a line and watched it
+    /// hold are slower to decide that this one will not, and morale is what decides ancient
+    /// battles — so this is where veterancy should be felt.
+    /// </summary>
+    public static readonly Fix MoralePerChevron = Fix.Two;
+
+    /// <summary>Chevrons a regiment can earn. Nine, as is traditional.</summary>
+    public const int MaxExperience = 9;
+
     public static readonly Fix SlopeCombatFactor = Fix.FromInt(16);
 
     public const int MaxHeightBonus = 4;

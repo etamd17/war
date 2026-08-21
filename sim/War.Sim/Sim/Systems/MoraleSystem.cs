@@ -80,7 +80,8 @@ public static class MoraleSystem
     public static string Explain(BattleState state, Unit unit)
     {
         Army army = state.ArmyOf(unit);
-        Fix baseline = Fix.FromInt(35) + Fix.FromInt(unit.Type.Morale) * Fix.Ratio(36, 10);
+        Fix baseline = Fix.FromInt(35) + Fix.FromInt(unit.Type.Morale) * Fix.Ratio(36, 10)
+                     + Fix.FromInt(unit.Experience) * SimConstants.MoralePerChevron;
 
         (string name, Fix value)[] terms =
         [
@@ -114,7 +115,8 @@ public static class MoraleSystem
 
         // Base standing, from the unit's own quality. Morale 4 lands near 50, morale 18
         // near 100, so even a levy starts the day willing to fight.
-        Fix morale = Fix.FromInt(35) + Fix.FromInt(unit.Type.Morale) * Fix.Ratio(36, 10);
+        Fix morale = Fix.FromInt(35) + Fix.FromInt(unit.Type.Morale) * Fix.Ratio(36, 10)
+                   + Fix.FromInt(unit.Experience) * SimConstants.MoralePerChevron;
 
         morale += CasualtyPenalty(unit);
         morale += MomentumTerm(unit);

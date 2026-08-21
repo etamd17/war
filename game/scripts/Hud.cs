@@ -133,6 +133,12 @@ public sealed partial class UnitCard : Panel
             ? "fled the field"
             : $"{_unit.Alive} / {_unit.Strength}";
 
+        // Chevrons, drawn as chevrons. A veteran regiment carried over from the campaign
+        // should be identifiable in the card row without reading a number.
+        _name.Text = _unit.Experience > 0
+            ? $"{_unit.Type.Name} {new string('›', Math.Min(_unit.Experience, 9))}"
+            : _unit.Type.Name;
+
         _formation.Text = _unit.IsOutOfAction ? "" : FormationName(_unit.Formation);
 
         (string text, Color colour) = Status();
